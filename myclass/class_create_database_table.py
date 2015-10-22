@@ -1,10 +1,23 @@
+# -*- coding: utf-8 -*-
+# !/usr/bin/python
+################################### PART0 DESCRIPTION #################################
+# Filename: class_create_database_table.py
+# Description:
+#
+
+
+# Author: Shuai Yuan
+# E-mail: ysh329@sina.com
+# Create: 2015-10-22 21:03:49
+# Last:
 __author__ = 'yuens'
 
-
+################################### PART1 IMPORT ######################################
 import MySQLdb
 import logging
 import time
 
+################################### PART2 CLASS && FUNCTION ###########################
 class createDatabaseTable(object):
 
     def __init__(self):
@@ -126,7 +139,6 @@ class createDatabaseTable(object):
 # initial parameters
 database_name = "messageDB"
 table_name_list = ["message_table", "word_table"]
-
 
 Creater = createDatabaseTable()
 Creater.create_database(database_name = database_name)
