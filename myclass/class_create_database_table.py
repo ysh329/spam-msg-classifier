@@ -101,7 +101,9 @@ class createDatabaseTable(object):
                                 keyword2 TEXT,
                                 keyword3 TEXT,
                                 content TEXT NOT NULL,
-                                splited_result_string TEXT,
+                                split_result_string TEXT,
+                                split_result_num INT(11),
+                                split_result_clean_num INT(11),
                                 word_index_string TEXT,
                                 word_vector_string TEXT)""" % table_name_list[0])
         sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[0])
