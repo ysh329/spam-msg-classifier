@@ -91,11 +91,11 @@ class createDatabaseTable(object):
 
         # table_name_list[0]: message_table
         sqls.append("""CREATE TABLE IF NOT EXISTS %s(
-                                id INT(11) AUTO_INCREMENT PRIMARY KEY,
-                                istrain INT(11),
+                                id INT(11) NOT NULL,
+                                is_train INT(11),
                                 true_label INT(11),
                                 predicted_lable INT(11),
-                                isspam_prob FLOAT,
+                                is_spam_prob FLOAT,
                                 word_num INT(11),
                                 keyword1 TEXT,
                                 keyword2 TEXT,
@@ -105,7 +105,8 @@ class createDatabaseTable(object):
                                 split_result_num INT(11),
                                 split_result_clean_num INT(11),
                                 word_index_string TEXT,
-                                word_vector_string TEXT)""" % table_name_list[0])
+                                word_vector_string TEXT,
+                                UNIQUE (id))""" % table_name_list[0])
         sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[0])
 
         # table_name_list[1]: word_table
@@ -119,8 +120,10 @@ class createDatabaseTable(object):
                                 all_num INT(11),
                                 true_neg_pro FLOAT,
                                 predicted_pos_num INT(11),
-                                predicted_neg_num INT(11))""" % table_name_list[1])
+                                predicted_neg_num INT(11),
+                                UNIQUE (id))""" % table_name_list[1])
         sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[1])
+        sqls.append("CREATE INDEX word_idx ON %s(word)" % table_name_list[1])
 
         try:
             for sql_idx in range(len(sqls)):
