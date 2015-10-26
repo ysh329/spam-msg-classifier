@@ -62,22 +62,22 @@ class createDatabaseTable(object):
 
         cursor = self.con.cursor()
         sqls = ['SET NAMES UTF8', 'SELECT VERSION()', 'CREATE DATABASE %s' % database_name]
-        try:
-            for sql_idx in xrange(len(sqls)):
-                sql = sqls[sql_idx]
+
+        for sql_idx in xrange(len(sqls)):
+            sql = sqls[sql_idx]
+            try:
                 cursor.execute(sql)
                 if sql_idx == 1:
                     result = cursor.fetchall()[0]
                     mysql_version = result[0]
                     logging.info("MySQL VERSION: %s" % mysql_version)
-            self.con.commit()
-            logging.info("Success in creating database %s." % database_name)
-        except MySQLdb.Error, e:
-            self.con.rollback()
-            logging.error("Fail in creating database %s." % database_name)
-            logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
-        finally:
-            cursor.close()
+                self.con.commit()
+                logging.info("Success in creating database %s." % database_name)
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("Fail in creating database %s." % database_name)
+                logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+        cursor.close()
 
 
 
@@ -94,16 +94,18 @@ class createDatabaseTable(object):
                                 id INT(11) NOT NULL,
                                 is_train INT(11),
                                 true_label INT(11),
-                                predicted_lable INT(11),
+                                predicted_label INT(11),
                                 is_spam_prob FLOAT,
                                 word_num INT(11),
                                 keyword1 TEXT,
                                 keyword2 TEXT,
                                 keyword3 TEXT,
-                                content TEXT NOT NULL,
+                                 content TEXT NOT NULL,
                                 split_result_string TEXT,
                                 split_result_num INT(11),
+                                split_result_clean_string TEXT,
                                 split_result_clean_num INT(11),
+                                stopword_num INT(11),
                                 word_index_string TEXT,
                                 word_vector_string TEXT,
                                 UNIQUE (id))""" % table_name_list[0])
@@ -121,22 +123,22 @@ class createDatabaseTable(object):
                                 true_neg_pro FLOAT,
                                 predicted_pos_num INT(11),
                                 predicted_neg_num INT(11),
-                                UNIQUE (id))""" % table_name_list[1])
+                                UNIQUE (id),
+                                UNIQUE (word))""" % table_name_list[1])
         sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[1])
         sqls.append("CREATE INDEX word_idx ON %s(word)" % table_name_list[1])
 
-        try:
-            for sql_idx in range(len(sqls)):
-                sql = sqls[sql_idx]
+        for sql_idx in range(len(sqls)):
+            sql = sqls[sql_idx]
+            try:
                 cursor.execute(sql)
-            self.con.commit()
-            logging.info("Success in creating table.")
-        except MySQLdb.Error, e:
-            self.con.rollback()
-            logging.error("Fail in creating table.")
-            logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
-        finally:
-            cursor.close()
+                self.con.commit()
+                logging.info("Success in creating table.")
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("Fail in creating table.")
+                logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+        cursor.close()
 
 
 

@@ -88,12 +88,9 @@ class ReadText2DB(object):
             logging.info("train_line_list[len(train_line_list)-1]: %s" % train_line_list[len(train_line_list)-1])
         except Exception as e:
             logging.error(e)
+            logging.error("Can't read training data set.\nTermination.")
             return
 
-        '''
-        result_list = train_line_list[0].split("\t")
-        for i in result_list: print i
-        '''
         train_data_triple_2d_list = map(lambda line: line.split("\t"), train_line_list)
         logging.info("len(train_data_triple_2d_list): %s." % len(train_data_triple_2d_list))
         logging.info("train_data_triple_2d_list[0]: %s." % train_data_triple_2d_list[0])
@@ -176,31 +173,50 @@ class ReadText2DB(object):
             is_train = is_train_list[id_idx]
             true_label = true_label_list[id_idx]
             word_num = word_num_list[id_idx]
-            content =content_list[id_idx]
-            split_result_string = split_result_string_list[id_idx]
+            content = content_list[id_idx].replace("'", '"').replace("\\", "")
+            split_result_string = split_result_string_list[id_idx].encode('utf8').replace("'", '"').replace("\\", "")
             split_result_num = split_result_num_list[id_idx]
 
-            sqls.append("""INSERT INTO %s(id, is_train, true_label, word_num, content, split_result_string, split_result_num)
-                                          VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s')""" % (table_name, id, is_train, true_label, word_num, content, split_result_string, split_result_num))
+            sqls.append("""INSERT INTO %s.%s(id, is_train, true_label, word_num, content, split_result_string, split_result_num) VALUES (%s, %s, %s, %s, '%s', '%s', %s)""" % (database_name, table_name, id, is_train, true_label, word_num, content, split_result_string, split_result_num))
 
+        logging.info("len(sqls): %s." % len(sqls))
+        logging.info("sqls[10]: %s." % sqls[10])
+        logging.info("type(sqls[10]): %s." % type(sqls[10]))
+        logging.info("sqls[len(sqls)-1]: %s." % sqls[len(sqls)-1])
 
+        '''
         try:
-            '''
-            for sql_idx in range(len(sqls)):
-                sql = sqls[sql_idx]
-                cursor.execute(sql)
-            '''
             map(lambda sql: cursor.execute(sql), sqls)
             self.con.commit()
-        except MySQLdb.Error, e:
-            self.con.rollback()
-            logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
-        finally:
-            cursor.close()
+        except Exception as e:
+            logging.error(e)
+            logging.error(sql)
+        '''
+        success_insert = 0
+        failure_insert = 0
+        for sql_idx in xrange(len(sqls)):
+            sql = sqls[sql_idx]
+            if sql_idx % 1000 == 0:
+                logging.info("sql_idx: %s." % sql_idx)
+
+            try:
+                cursor.execute(sql)
+                self.con.commit()
+                success_insert = success_insert + 1
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                failure_insert = failure_insert + 1
+                logging.error("Error SQL[sql_idx: %s]: %s." % (sql_idx, sql))
+                logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+
+        logging.info("success_insert: %s." % success_insert)
+        logging.info("failure_insert: %s." % failure_insert)
+        logging.info("summation insert: %s." % (success_insert + failure_insert))
+        cursor.close()
 
 
 
-    def read_text_into_clean_data(self, split_result_2d_list):
+    def save_word_to_database(self):
         logging.info("")
         try:
             stopword_list = self.stopword_f.readlines()
@@ -212,6 +228,25 @@ class ReadText2DB(object):
         except Exception as e:
             logging.error(e)
             stopword_list = []
+
+
+
+
+    def read_text_into_clean_data(self, split_result_2d_list):
+
+
+
+        split_result_1d_list = list(set(sum(split_result_2d_list, [])))
+        logging.info("")
+        logging.info("len(split_result_1d_list): %s." % len(split_result_1d_list))
+        logging.info("type(split_result_1d_list): %s." % type(split_result_1d_list))
+        logging.info("split_result_1d_list[0]: %s." % split_result_1d_list[0])
+        logging.info("type(split_result_1d_list[0]): %s." % type(split_result_1d_list[0]))
+        logging.info("split_result_1d_list[len(split_result_1d_list)-1]: %s." % split_result_1d_list[len(split_result_1d_list)-1])
+        logging.info("type(split_result_1d_list[len(split_result_1d_list)-1]): %s." % type(split_result_1d_list[len(split_result_1d_list)-1]))
+
+
+
 
 
 
@@ -227,4 +262,6 @@ Reader = ReadText2DB(database_name = database_name,
                      train_data_dir = train_data_dir,
                      stopword_data_dir = stopword_data_dir)
 id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list, split_result_2d_list = Reader.read_text_into_meta_data()
-Reader.save_meta_data_to_database(database_name, table_name_list[0], id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list)
+#Reader.save_meta_data_to_database(database_name, table_name_list[0], id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list)
+
+#Reader.read_text_into_clean_data(split_result_2d_list)
