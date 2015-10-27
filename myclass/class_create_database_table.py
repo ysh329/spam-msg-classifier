@@ -114,7 +114,8 @@ class createDatabaseTable(object):
         # table_name_list[1]: word_table
         sqls.append("""CREATE TABLE IF NOT EXISTS %s(
                                 id INT(11) AUTO_INCREMENT PRIMARY KEY,
-                                word INT(11),
+                                word VARCHAR(100),
+                                is_stopword INT(11),
                                 word_length INT(11),
                                 topic TEXT,
                                 true_pos_num INT(11),
@@ -123,7 +124,6 @@ class createDatabaseTable(object):
                                 true_neg_pro FLOAT,
                                 predicted_pos_num INT(11),
                                 predicted_neg_num INT(11),
-                                UNIQUE (id),
                                 UNIQUE (word))""" % table_name_list[1])
         sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[1])
         sqls.append("CREATE INDEX word_idx ON %s(word)" % table_name_list[1])
