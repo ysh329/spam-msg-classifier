@@ -221,7 +221,7 @@ class ReadText2DB(object):
 
         # word: stopword
         try:
-            stopword_list = map(lambda stopword: stopword.strip(), self.stopword_f.readlines())
+            stopword_list = list(set(map(lambda stopword: stopword.strip(), self.stopword_f.readlines())))
             stopword_list[0] = " "
             logging.info("Success in reading file to variable.")
             logging.info("type(stopword_list): %s" % type(stopword_list))
@@ -231,9 +231,6 @@ class ReadText2DB(object):
         except Exception as e:
             logging.error(e)
             stopword_list = []
-
-        # is_stopword
-        is_stopword = 1
 
         # word_length: word_length_list
         try:
@@ -245,19 +242,35 @@ class ReadText2DB(object):
         except Exception as e:
             logging.error(e)
 
-
         # SQL generator
-        try:
-            sqls = map(lambda stopword, word_length:\
-                           """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
-                           % (database_name, table_name_list[1], stopword.decode('utf8'), is_stopword, word_length),\
-                       stopword_list, word_length_list)
-            logging.info("len(sqls): %s." % len(sqls))
-            logging.info("sqls[0]: %s." % sqls[0])
-            logging.info("sqls[len(sqls)-1]: %s." % sqls[len(sqls)-1])
-        except Exception as e:
-            sqls.append()
-            logging.error(e)
+        sqls = ['USE %s' % database_name, 'SET NAMES UTF8']
+        sqls.append("ALTER DATABASE %s DEFAULT CHARACTER SET 'utf8'" % database_name)
+        for stopword_idx in xrange(len(stopword_list)):
+
+            # is_stopword
+            is_stopword = 1
+
+            stopword = stopword_list[stopword_idx]
+            word_length = word_length_list[stopword_idx]
+            try:
+                if stopword == "'":
+                    sql = """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES("%s", %s, %s)"""\
+                               % (database_name, table_name_list[1], stopword, is_stopword, word_length)
+                else:
+                    sql = """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
+                               % (database_name, table_name_list[1], stopword, is_stopword, word_length)
+                sqls.append(sql)
+            except Exception as e:
+                logging.error(e)
+        '''
+        sqls = map(lambda stopword, word_length:\
+                       """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
+                       % (database_name, table_name_list[1], stopword, is_stopword, word_length),\
+                   stopword_list, word_length_list)
+        '''
+        logging.info("len(sqls): %s." % len(sqls))
+        logging.info("sqls[0]: %s." % sqls[0])
+        logging.info("sqls[len(sqls)-1]: %s." % sqls[len(sqls)-1])
 
         # SQL executor
         success_insert = 0
