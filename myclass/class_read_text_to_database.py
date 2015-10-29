@@ -77,7 +77,7 @@ class ReadText2DB(object):
 
 
     # (id, is_train, true_label, word_num, content, split_result_string, split_result_num, split_result_clean_num)
-    def read_text_into_meta_data(self):
+    def read_text_into_meta_data(self, data_set):
         logging.info("")
         try:
             train_line_list = self.train_f.readlines()
@@ -295,8 +295,6 @@ class ReadText2DB(object):
 
 
     def read_text_into_clean_data(self, split_result_2d_list):
-
-
 
         split_result_1d_list = list(set(sum(split_result_2d_list, [])))
         logging.info("")
