@@ -23,7 +23,7 @@ class ReadText2DB(object):
     def __init__(self, database_name, train_data_dir, stopword_data_dir):
         self.start = time.clock()
 
-        logging.basicConfig(level = logging.DEBUG,
+        logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
                   filename = './main.log',
@@ -287,12 +287,12 @@ class ReadText2DB(object):
                 self.con.rollback()
                 logging.error("Error SQL: %s." % sql)
                 logging.error(e)
-
+        cursor.close()
         logging.info("success_insert: %s." % success_insert)
         logging.info("failure_insert: %s." % failure_insert)
 
 
-
+    """
     def read_text_into_clean_data(self, split_result_2d_list):
 
         split_result_1d_list = list(set(sum(split_result_2d_list, [])))
@@ -303,14 +303,9 @@ class ReadText2DB(object):
         logging.info("type(split_result_1d_list[0]): %s." % type(split_result_1d_list[0]))
         logging.info("split_result_1d_list[len(split_result_1d_list)-1]: %s." % split_result_1d_list[len(split_result_1d_list)-1])
         logging.info("type(split_result_1d_list[len(split_result_1d_list)-1]): %s." % type(split_result_1d_list[len(split_result_1d_list)-1]))
-
-
-
-
-
+    """
 
 ################################### PART3 CLASS TEST ##################################
-
 # initial parameters
 database_name = "messageDB"
 table_name_list = ["message_table", "word_table"]
@@ -327,24 +322,3 @@ Reader = ReadText2DB(database_name = database_name,
 #Reader.read_text_into_clean_data(split_result_2d_list)
 Reader.save_word_to_database(database_name = database_name,
                              table_name_list = table_name_list)
-
-'''
-import sys
-from random import random
-from operator import add
-
-
-sc = SparkContext(appName="PythonPi")
-partitions = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-n = 100000 * partitions
-
-def f(_):
-    x = random() * 2 - 1
-    y = random() * 2 - 1
-    return 1 if x ** 2 + y ** 2 < 1 else 0
-
-count = sc.parallelize(range(1, n + 1), partitions).map(f).reduce(add)
-print("Pi is roughly %f" % (4.0 * count / n))
-
-sc.stop()
-'''

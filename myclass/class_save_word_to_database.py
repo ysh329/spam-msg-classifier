@@ -18,12 +18,11 @@ import MySQLdb
 import time
 from pyspark import SparkContext
 ################################### PART2 CLASS && FUNCTION ###########################
-
 class UniqueWordSaver(object):
     def __init__(self, database_name):
         self.start = time.clock()
 
-        logging.basicConfig(level = logging.DEBUG,
+        logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
                   filename = './main.log',
@@ -35,7 +34,7 @@ class UniqueWordSaver(object):
         console.setFormatter(formatter)
 
         logging.getLogger('').addHandler(console)
-        logging.info("START.")
+        logging.info("START CLASS {class_name}.".format(class_name = UniqueWordSaver.__name__))
 
         # connect database
         try:
@@ -47,30 +46,24 @@ class UniqueWordSaver(object):
 
 
 
-    def __init__(self):
-        self.con.close()
+    def __del__(self):
+        try:
+            self.con.close()
+            logging.info("Success in quiting MySQL.")
+        except Exception as e:
+            logging.error(e)
 
-        logging.info("Success in quiting MySQL.")
-        logging.info("END.")
-
+        logging.info("END CLASS {class_name}.".format(class_name = UniqueWordSaver.__name__))
         self.end = time.clock()
-        logging.info("The function run time is : %.03f seconds" % (self.end - self.start))
-
-import sys
-from random import random
-from operator import add
+        logging.info("The class {class_name} run time is : %0.3{delta_time} seconds".format(class_name = UniqueWordSaver.__name__, delta_time = self.end))
 
 
-sc = SparkContext(appName="PythonPi")
-partitions = int(sys.argv[1]) if len(sys.argv) > 1 else 2
-n = 100000 * partitions
 
-def f(_):
-    x = random() * 2 - 1
-    y = random() * 2 - 1
-    return 1 if x ** 2 + y ** 2 < 1 else 0
+    def read_clean_split_string_from_database(self, database_name, message_table_name):
+        cursor = self.con.cursor()
 
-count = sc.parallelize(range(1, n + 1), partitions).map(f).reduce(add)
-print("Pi is roughly %f" % (4.0 * count / n))
+        cursor.close()
+################################### PART3 CLASS TEST ##################################
 
-sc.stop()
+database_name = "messageDB"
+WordRecord = UniqueWordSaver(database_name = database_name)
