@@ -19,14 +19,13 @@ import time
 
 ################################### PART2 CLASS && FUNCTION ###########################
 class createDatabaseTable(object):
-
-    def __init__(self):
+    def __init__(self, log_data_dir):
         self.start = time.clock()
 
-        logging.basicConfig(level = logging.DEBUG,
+        logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './main.log',
+                  filename = log_data_dir,#'./main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -35,14 +34,14 @@ class createDatabaseTable(object):
         console.setFormatter(formatter)
 
         logging.getLogger('').addHandler(console)
-        logging.info("START.")
+        logging.info("START CLASS {class_name}.".format(class_name = createDatabaseTable.__name__))
 
         try:
             self.con = MySQLdb.connect(host='localhost', user='root', passwd='931209', charset='utf8')
             logging.info("Success in connecting MySQL.")
         except MySQLdb.Error, e:
             logging.error("Fail in connecting MySQL.")
-            logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+            logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
 
 
 
@@ -50,18 +49,18 @@ class createDatabaseTable(object):
         self.con.close()
 
         logging.info("Success in quiting MySQL.")
-        logging.info("END.")
+        logging.info("END CLASS {class_name}.".format(class_name = createDatabaseTable.__name__))
 
         self.end = time.clock()
-        logging.info("The function run time is : %.03f seconds" % (self.end - self.start))
+        logging.info("The class {class_name} run time is : {delta_time} seconds".format(class_name = createDatabaseTable.__name__, delta_time = self.end - self.start))
 
 
 
     def create_database(self, database_name):
-        logging.info("database name:%s" % database_name)
+        logging.info("database name: {database_name}".format(database_name = database_name))
 
         cursor = self.con.cursor()
-        sqls = ['SET NAMES UTF8', 'SELECT VERSION()', 'CREATE DATABASE %s' % database_name]
+        sqls = ['SET NAMES UTF8', 'SELECT VERSION()', "CREATE DATABASE {database_name}".format(database_name = database_name)]
 
         for sql_idx in xrange(len(sqls)):
             sql = sqls[sql_idx]
@@ -70,27 +69,25 @@ class createDatabaseTable(object):
                 if sql_idx == 1:
                     result = cursor.fetchall()[0]
                     mysql_version = result[0]
-                    logging.info("MySQL VERSION: %s" % mysql_version)
+                    logging.info("MySQL VERSION: {mysql_version}".format(mysql_version = mysql_version))
                 self.con.commit()
-                logging.info("Success in creating database %s." % database_name)
+                logging.info("Success in creating database {database_name}.".format(database_name = database_name))
             except MySQLdb.Error, e:
                 self.con.rollback()
-                logging.error("Fail in creating database %s." % database_name)
-                logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+                logging.error("Fail in creating database {database_name}.".format(database_name = database_name))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
         cursor.close()
 
 
 
-    def create_table(self, database_name, table_name_list):
-        logging.info("")
-
+    def create_table(self, database_name, message_table_name, word_table_name):
         cursor = self.con.cursor()
-        sqls = ['USE %s' % database_name, 'SET NAMES UTF8']
+        sqls = ["USE {database_name}".format(database_name = database_name), 'SET NAMES UTF8']
 
-        sqls.append("ALTER DATABASE %s DEFAULT CHARACTER SET 'utf8'" % database_name)
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
 
-        # table_name_list[0]: message_table
-        sqls.append("""CREATE TABLE IF NOT EXISTS %s(
+        # Create message_table_name
+        sqls.append("""CREATE TABLE IF NOT EXISTS {message_table_name}(
                                 id INT(11) NOT NULL,
                                 is_train INT(11),
                                 true_label INT(11),
@@ -100,7 +97,10 @@ class createDatabaseTable(object):
                                 keyword1 TEXT,
                                 keyword2 TEXT,
                                 keyword3 TEXT,
-                                 content TEXT NOT NULL,
+                                number_num INT(11),
+                                letter_num INT(11),
+                                symbol_num INT(11),
+                                content TEXT NOT NULL,
                                 split_result_string TEXT,
                                 split_result_num INT(11),
                                 split_result_clean_string TEXT,
@@ -108,11 +108,11 @@ class createDatabaseTable(object):
                                 stopword_num INT(11),
                                 word_index_string TEXT,
                                 word_vector_string TEXT,
-                                UNIQUE (id))""" % table_name_list[0])
-        sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[0])
+                                UNIQUE (id))""".format(message_table_name = message_table_name))
+        sqls.append("CREATE INDEX id_idx ON {message_table_name}(id)".format(message_table_name = message_table_name))
 
-        # table_name_list[1]: word_table
-        sqls.append("""CREATE TABLE IF NOT EXISTS %s(
+        # Create word_table_name
+        sqls.append("""CREATE TABLE IF NOT EXISTS {word_table_name}(
                                 id INT(11) AUTO_INCREMENT PRIMARY KEY,
                                 word VARCHAR(100),
                                 is_stopword INT(11),
@@ -124,9 +124,9 @@ class createDatabaseTable(object):
                                 true_neg_pro FLOAT,
                                 predicted_pos_num INT(11),
                                 predicted_neg_num INT(11),
-                                UNIQUE (word))""" % table_name_list[1])
-        sqls.append("CREATE INDEX id_idx ON %s(id)" % table_name_list[1])
-        sqls.append("CREATE INDEX word_idx ON %s(word)" % table_name_list[1])
+                                UNIQUE (word))""".format(word_table_name = word_table_name))
+        sqls.append("CREATE INDEX id_idx ON {word_table_name}(id)".format(word_table_name = word_table_name))
+        sqls.append("CREATE INDEX word_idx ON {word_table_name}(word)".format(word_table_name = word_table_name))
 
         for sql_idx in range(len(sqls)):
             sql = sqls[sql_idx]
@@ -137,16 +137,22 @@ class createDatabaseTable(object):
             except MySQLdb.Error, e:
                 self.con.rollback()
                 logging.error("Fail in creating table.")
-                logging.error("MySQL Error %d: %s." % (e.args[0], e.args[1]))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
         cursor.close()
 
 
 
 ################################### PART3 CLASS TEST ##################################
+"""
 # initial parameters
 database_name = "messageDB"
-table_name_list = ["message_table", "word_table"]
+message_table_name = "message_table"
+word_table_name = "word_table"
+log_data_dir = "./main.log"
 
-Creater = createDatabaseTable()
+Creater = createDatabaseTable(log_data_dir = log_data_dir)
 Creater.create_database(database_name = database_name)
-Creater.create_table(database_name = database_name, table_name_list = table_name_list)
+Creater.create_table(database_name = database_name,\
+                     message_table_name = message_table_name,\
+                     word_table_name = word_table_name)
+"""
