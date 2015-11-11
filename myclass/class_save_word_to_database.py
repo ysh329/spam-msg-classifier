@@ -53,7 +53,6 @@ class UniqueWordSaver(object):
 
 
 
-
     def __del__(self):
         # close database
         try:
@@ -73,16 +72,6 @@ class UniqueWordSaver(object):
         self.end = time.clock()
         logging.info("The class {class_name} run time is : %0.3{delta_time} seconds".format(class_name = UniqueWordSaver.__name__, delta_time = self.end))
 
-
-
-    def read_clean_split_result_string_from_database(self, message_table_name):
-        cursor = self.con.cursor()
-
-        sqls = []
-        clean_split_result_string_2d_list = []
-
-        cursor.close()
-        return clean_split_result_string_2d_list
 
 
     def save_stopword_to_database(self, database_name, word_table_name):
@@ -133,12 +122,6 @@ class UniqueWordSaver(object):
                     sqls.append(sql)
                 except Exception as e:
                     logging.error(e)
-        '''
-        sqls = map(lambda stopword, word_length:\
-                       """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
-                       % (database_name, table_name_list[1], stopword, is_stopword, word_length),\
-                   stopword_list, word_length_list)
-        '''
         logging.info("len(sqls): {sqls_list_length}.".format(sqls_list_length = len(sqls)))
         logging.info("sqls[0]: {first_sql}.".format(first_sql = sqls[0]))
         logging.info("sqls[len(sqls)-1]: {last_sql}.".format(last_sql = sqls[len(sqls)-1]))
@@ -168,6 +151,7 @@ class UniqueWordSaver(object):
         logging.info("failure_insert: {failure_insert}.".format(failure_insert = failure_insert))
 
 
+
     def check_repeat_word_in_database_table(self, word, database_name, table_name):
         word_is_repeat = 0
 
@@ -192,12 +176,71 @@ class UniqueWordSaver(object):
             logging.error("Error SQL: {sql}.".format(sql = sql))
             logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
 
+
+
+    def read_split_result_string_from_database(self, database_name, message_table_name, pyspark_app_name):
+        cursor = self.con.cursor()
+
+        sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
+        sqls.append("""SELECT split_result_string FROM {database_name}.{message_table_name}""".format(database_name = database_name, message_table_name = message_table_name))
+
+        for sql_idx in xrange(len(sqls)):
+            sql = sqls[sql_idx]
+            try:
+                cursor.execute(sql)
+                if sql == sqls[-1]:
+                    split_result_string_tuple = cursor.fetchall()
+                    logging.info("len(split_result_string_tuple): {tuple_length}.".format(tuple_length = len(split_result_string_tuple)))
+                    logging.info("len(split_result_string_tuple[0]): {first_tuple_length}".format(first_tuple_length = len(split_result_string_tuple[0])))
+                    logging.info(u"split_result_string_tuple[0][0]: {first_tuple_first_tuple}".format(first_tuple_first_tuple = split_result_string_tuple[0][0]))
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+        cursor.close()
+
+        slash_split_string_1d_tuple = map(lambda split_2d_tuple: split_2d_tuple[0], split_result_string_tuple)
+
+        logging.info("len(slash_split_string_1d_tuple): {string_1d_tuple_length}".format(string_1d_tuple_length = len(slash_split_string_1d_tuple)))
+        logging.info(u"slash_split_string_1d_tuple[0]: {first_element_in_tuple}".format(first_element_in_tuple = slash_split_string_1d_tuple[0]))
+        logging.info("type(slash_split_string_1d_tuple): {first_element_type}".format(first_element_type = type(slash_split_string_1d_tuple)))
+
+        return slash_split_string_1d_tuple
+
+
+    def generate_clean_stopword_result_string_rdd(self, slash_split_string_1d_tuple, pyspark_app_name):
+        sc = SparkContext(appName = pyspark_app_name)
+        logging.info("SparkContext Version: {sc_version}".format(sc_version = sc.version))
+
+        slash_split_string_1d_tuple_rdd = sc.parallelize(slash_split_string_1d_tuple)
+        logging.info("slash_split_string_1d_tuple_rdd.count(): {rdd_count}".format(rdd_count = slash_split_string_1d_tuple_rdd.count()))
+        logging.info("type(slash_split_string_1d_tuple_rdd): {type_rdd}".format(type_rdd = type(slash_split_string_1d_tuple_rdd)))
+        logging.info("ID of slash_split_string_1d_tuple_rdd: {rdd_id}".format(rdd_id = slash_split_string_1d_tuple_rdd.id()))
+        slash_split_string_1d_tuple_rdd.setName("First RDD")
+
+        logging.info("RDD lineage of slash_split_string_1d_tuple_rdd: {rdd_lineage}".format(rdd_lineage = str(slash_split_string_1d_tuple_rdd.toDebugString())))
+        logging.info("Partition number of slash_split_string_1d_tuple_rdd: {0}".format(slash_split_string_1d_tuple_rdd.getNumPartitions()))
+
+        self.split_string_1d_tuple_rdd = slash_split_string_1d_tuple_rdd.map(lambda slash_split_string: tuple(slash_split_string.split("///")))
+        self.split_string_1d_tuple_rdd.persist()
+        logging.info(u"first element of split_string_1d_tuple_rdd: {0}".format(u"".join(self.split_string_1d_tuple_rdd.take(1)[0])))
+        #print split_string_1d_tuple_rdd.take(2)
+
+
 ################################### PART3 CLASS TEST ##################################
 
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
 stopword_data_dir = "../data/input/stopword.txt"
+pyspark_app_name = "spam-msg_classifier"
+
 
 WordRecord = UniqueWordSaver(database_name = database_name, stopword_data_dir = stopword_data_dir)
 WordRecord.save_stopword_to_database(database_name = database_name, word_table_name = word_table_name)
+slash_split_string_1d_tuple = WordRecord.read_split_result_string_from_database(database_name = database_name,
+                                                                                message_table_name = message_table_name,
+                                                                                pyspark_app_name = pyspark_app_name)
+WordRecord.generate_clean_stopword_result_string_rdd(slash_split_string_1d_tuple = slash_split_string_1d_tuple,
+                                                     pyspark_app_name = pyspark_app_name)
+
