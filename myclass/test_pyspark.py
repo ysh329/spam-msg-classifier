@@ -2,7 +2,6 @@ __author__ = 'yuens'
 import sys
 from random import random
 from operator import add
-
 from pyspark import SparkContext
 
 
