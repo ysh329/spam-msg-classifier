@@ -215,82 +215,6 @@ class ReadText2DB(object):
 
 
 
-    def save_word_to_database(self, database_name, table_name_list):
-        logging.info("")
-
-        # word: stopword
-        try:
-            stopword_list = list(set(map(lambda stopword: stopword.strip(), self.stopword_f.readlines())))
-            stopword_list[0] = " "
-            logging.info("Success in reading file to variable.")
-            logging.info("type(stopword_list): %s" % type(stopword_list))
-            logging.info("len(stopword_list): %s" % len(stopword_list))
-            logging.info("stopword_list[0]: %s" % '.'+stopword_list[0]+'.')
-            logging.info("stopword_list[len(stopword_list)-1]: %s" % stopword_list[len(stopword_list)-1])
-        except Exception as e:
-            logging.error(e)
-            stopword_list = []
-
-        # word_length: word_length_list
-        try:
-            word_length_list = map(lambda stopword: len(stopword.decode('utf8')), stopword_list)
-            logging.info("len(word_length_list): %s." % len(word_length_list))
-            logging.info("word_length_list[0]: %s." % word_length_list[0])
-            logging.info("type(word_length_list[8]): %s." % type(word_length_list[8]))
-            logging.info("word_length_list[len(word_length_list)-1]: %s." % word_length_list[len(word_length_list)-1])
-        except Exception as e:
-            logging.error(e)
-
-        # SQL generator
-        sqls = ['USE %s' % database_name, 'SET NAMES UTF8']
-        sqls.append("ALTER DATABASE %s DEFAULT CHARACTER SET 'utf8'" % database_name)
-        for stopword_idx in xrange(len(stopword_list)):
-
-            # is_stopword
-            is_stopword = 1
-
-            stopword = stopword_list[stopword_idx]
-            word_length = word_length_list[stopword_idx]
-            try:
-                if stopword == "'":
-                    sql = """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES("%s", %s, %s)"""\
-                               % (database_name, table_name_list[1], stopword, is_stopword, word_length)
-                else:
-                    sql = """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
-                               % (database_name, table_name_list[1], stopword, is_stopword, word_length)
-                sqls.append(sql)
-            except Exception as e:
-                logging.error(e)
-        '''
-        sqls = map(lambda stopword, word_length:\
-                       """INSERT INTO %s.%s(word, is_stopword, word_length) VALUES('%s', %s, %s)"""\
-                       % (database_name, table_name_list[1], stopword, is_stopword, word_length),\
-                   stopword_list, word_length_list)
-        '''
-        logging.info("len(sqls): %s." % len(sqls))
-        logging.info("sqls[0]: %s." % sqls[0])
-        logging.info("sqls[len(sqls)-1]: %s." % sqls[len(sqls)-1])
-
-        # SQL executor
-        success_insert = 0
-        failure_insert = 0
-        cursor = self.con.cursor()
-        for sql_idx in xrange(len(sqls)):
-            sql = sqls[sql_idx]
-            try:
-                cursor.execute(sql)
-                #map(lambda sql: cursor.execute(sql), sqls)
-                self.con.commit()
-                success_insert = success_insert + 1
-            except Exception as e:
-                failure_insert = failure_insert + 1
-                self.con.rollback()
-                logging.error("Error SQL: %s." % sql)
-                logging.error(e)
-        cursor.close()
-        logging.info("success_insert: %s." % success_insert)
-        logging.info("failure_insert: %s." % failure_insert)
-
 
     """
     def read_text_into_clean_data(self, split_result_2d_list):
@@ -320,5 +244,5 @@ Reader = ReadText2DB(database_name = database_name,
 #Reader.save_meta_data_to_database(database_name, table_name_list[0], id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list)
 
 #Reader.read_text_into_clean_data(split_result_2d_list)
-Reader.save_word_to_database(database_name = database_name,
+Reader.save_stopword_to_database(database_name = database_name,
                              table_name_list = table_name_list)
