@@ -17,6 +17,8 @@ import logging
 import MySQLdb
 import time
 from pyspark import SparkContext
+from multiprocessing import Pool
+from multiprocessing.dummy import Pool as ThreadPool
 ################################### PART2 CLASS && FUNCTION ###########################
 class UniqueWordSaver(object):
     def __init__(self, database_name, stopword_data_dir):
@@ -156,8 +158,13 @@ class UniqueWordSaver(object):
         word_is_repeat = 0
 
         cursor = self.con.cursor()
+        try:
+            sql = """SELECT id FROM {database_name}.{table_name} WHERE word='{word}'""".format(database_name = database_name, table_name = table_name, word = word)
+        except Exception as e:
+            logging.error(e)
+            logging.error(u"word:{0}".format(word))
+            logging.error("type(word):{0}".format(type(word)))
 
-        sql = """SELECT id FROM {database_name}.{table_name} WHERE word='{word}'""".format(database_name = database_name, table_name = table_name, word = word)
         if word == "'":
             sql = """SELECT id FROM {database_name}.{table_name} WHERE word="{word}" """.format(database_name = database_name, table_name = table_name, word = word)
 
@@ -241,8 +248,8 @@ class UniqueWordSaver(object):
         self.word_len_rdd = word_count_rdd.map(lambda (word, counter): (word, len(word)))
         stopword_list = self.stopword_list
         self.word_is_stopword_rdd = word_count_rdd.map(lambda (word, counter): (word, int(word in stopword_list)))
-        logging.info("self.word_len_rdd.take(5):{0}".format(self.word_len_rdd.take(5)))
-        logging.info("self.word_is_stopword_rdd.take(5):{0}".format(self.word_is_stopword_rdd.take(5)))
+        logging.info(u"self.word_len_rdd.take(5):{0}".format(self.word_len_rdd.take(5)))
+        logging.info(u"self.word_is_stopword_rdd.take(5):{0}".format(self.word_is_stopword_rdd.take(5)))
         logging.info("type(word_count_rdd):{0}".format(type(word_count_rdd)))
         #print self.word_count_rdd.collect()
         word_count_rdd.persist()
@@ -255,10 +262,10 @@ class UniqueWordSaver(object):
 
     def compute_len_is_stopword_rdd(self, word_count_rdd):
 
-        stopword_list = self.stopword_list
+        stopword_list = map(lambda stopword: unicode(stopword, "utf8"), self.stopword_list)
         word_count_len_is_stopword_rdd = word_count_rdd.map(lambda (word, counter): (word, counter, len(word), int(word in stopword_list)))
 
-        logging.info("word_count_len_is_stopword_rdd.take(5):{0}".format(word_count_len_is_stopword_rdd.take(5)))
+        logging.info(u"word_count_len_is_stopword_rdd.take(5):{0}".format(word_count_len_is_stopword_rdd.take(5)))
         #word_count_len_is_stopword_rdd.saveAsTextFile("word_count_len_is_stopword_rdd.txt")
 
         logging.info("type(word_count_len_is_stopword_rdd):{0}".format(type(word_count_len_is_stopword_rdd)))
@@ -276,22 +283,55 @@ class UniqueWordSaver(object):
 
 
     def save_word_count_with_len_rdd_to_database(self, database_name, word_table_name, word_count_len_is_stopword_rdd):
-        word_count_len_is_stopword_rdd = self.sc.parallelize(word_count_len_is_stopword_rdd.collect())
-        word_insert_sql_rdd = word_count_len_is_stopword_rdd\
-            .map(lambda (word, all_num, word_length, is_stopword):\
-                                                   self.word_insert_sql_generator(database_name,\
-                                                                                  word_table_name,\
-                                                                                  word,\
-                                                                                  all_num,\
-                                                                                  word_length,\
-                                                                                  is_stopword)\
-                 )
-        print word_count_len_is_stopword_rdd.top(1)
-        print 1111111111
-        logging.info("word_insert_sql_list.count():{0}".format(word_insert_sql_rdd.count()))
-        print 2222222222
-        logging.info("format(word_insert_sql_rdd.top(1)):{0}".format(word_insert_sql_rdd.top(1)))
-        print 3333333333
+
+        # word insert sql generate
+        word_count_len_is_stopword_tuple_list = word_count_len_is_stopword_rdd.collect()
+
+        logging.info("len(word_count_len_is_stopword_tuple_list):{0}".format(len(word_count_len_is_stopword_tuple_list)))
+        logging.info("word_count_len_is_stopword_tuple_list[:3]:{0}".format(word_count_len_is_stopword_tuple_list[:3]))
+
+
+        word_insert_sql_list = []
+        for idx in xrange(len(word_count_len_is_stopword_tuple_list)):
+            word_count_len_is_stopword_tuple = word_count_len_is_stopword_tuple_list[idx]
+
+            word = word_count_len_is_stopword_tuple[0].encode("utf8")
+            all_num = word_count_len_is_stopword_tuple[1]
+            word_length = word_count_len_is_stopword_tuple[2]
+            is_stopword = word_count_len_is_stopword_tuple[3]
+
+            sql = self.word_insert_sql_generator(database_name = database_name,
+                                           word_table_name = word_table_name,
+                                           word = word,
+                                           all_num = all_num,
+                                           word_length = word_length,
+                                           is_stopword = is_stopword)
+
+            word_insert_sql_list.append(sql)
+
+
+        """
+        # Make the Pool of workers
+        pool = ThreadPool(4)
+        # Open the urls in their own threads
+        # and return the results
+        word_insert_sql_list = pool.map(lambda (word, all_num, word_length, is_stopword):\
+                                        self.word_insert_sql_generator(database_name = database_name,\
+                                                                       word_table_name = word_table_name,\
+                                                                       word = word,\
+                                                                       all_num = all_num,\
+                                                                       word_length = word_length,\
+                                                                       is_stopword = is_stopword),\
+                                        word_count_len_is_stopword_tuple_list)
+        #close the pool and wait for the work to finish
+        pool.close()
+        pool.join()
+        """
+        logging.info("len(word_insert_sql_list):{0}".format(len(word_insert_sql_list)))
+        logging.info(u"word_insert_sql_list[:3]:{0}".format(word_insert_sql_list[:99]))
+
+
+        """
         cursor = self.con.cursor()
         try:
             word_insert_sql_rdd.map(lambda sql: cursor.execute(sql)).collect()
@@ -300,37 +340,53 @@ class UniqueWordSaver(object):
                 self.con.rollback()
                 logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
         cursor.close()
+        """
         return
 
 
 
     def word_insert_sql_generator(self, database_name, word_table_name, word, all_num, word_length, is_stopword):
+        #print word, all_num, word_length, is_stopword
+        print database_name, word_table_name, word, all_num, word_length, is_stopword
+
         if self.check_repeat_word_in_database_table(word = word, database_name = database_name, table_name = word_table_name):
-            sql = """UPDATE {database_name}.{table_name}
-                        SET all_num={all_num}, word_length={word_length}, is_stopword={is_stopword}
-                        WHERE word='{word}'"""\
-                .format(database_name = database_name,
-                        table_name = word_table_name,
-                        all_num = all_num,
-                        word_length = word_length,
-                        is_stopword = is_stopword,
-                        word = word)
+            try:
+                print 1111111111111111111111
+                sql = """UPDATE {database_name}.{table_name}
+                            SET all_num={all_num}, word_length={word_length}, is_stopword={is_stopword}
+                            WHERE word='{word}'"""\
+                    .format(database_name = database_name,\
+                            table_name = word_table_name,\
+                            word = word,\
+                            is_stopword = is_stopword,\
+                            word_length = word_length,\
+                            all_num = all_num)
+            except Exception as e:
+                logging.error(e)
+                logging.error("error sql{0}".format(sql))
         else:
-            sql = """INSERT INTO {database_name}.{table_name}(word, is_stopword, word_length, all_num)
-                      VALUES('{word}', '{is_stopword}', '{word_length}', '{all_num}'))"""\
-                .format(database_name = database_name,\
-                        table_name = word_table_name,\
-                        word = word,\
-                        is_stopword = is_stopword,\
-                        word_length = word_length,\
-                        all_num = all_num)
+            try:
+                print 22222222222222222222222
+                sql = """INSERT INTO {database_name}.{table_name}(word, is_stopword, word_length, all_num)
+                          VALUES('{word}', {is_stopword}, {word_length}, {all_num}))"""\
+                    .format(database_name = database_name,\
+                            table_name = word_table_name,\
+                            word = word,\
+                            is_stopword = is_stopword,\
+                            word_length = word_length,\
+                            all_num = all_num)
+            except Exception as e:
+                logging.error(e)
+                logging.error("type(word):{0}".format(type(word)))
+                logging.error("word:{0}".format(word))
+                logging.error("error sql{0}".format(sql))
         return sql
 ################################### PART3 CLASS TEST ##################################
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
 stopword_data_dir = "../data/input/stopword.txt"
-pyspark_app_name = "spam-msg_classifier"
+pyspark_app_name = "spam-msg-classifier"
 
 
 WordRecord = UniqueWordSaver(database_name = database_name, stopword_data_dir = stopword_data_dir)
