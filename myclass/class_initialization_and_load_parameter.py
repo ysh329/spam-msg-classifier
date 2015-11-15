@@ -48,9 +48,9 @@ class InitializationAndLoadParameter(object):
     def load_parameter(self, config_data_dir):
         conf = ConfigParser.ConfigParser()
         conf.read(config_data_dir)
-        appName = conf.get("basic", "appName")
+        pyspark_app_name = conf.get("basic", "pyspark_app_name")
         log_data_dir = conf.get("basic", "log_data_dir")
-        logging.info("appName: {appName}".format(appName = appName))
+        logging.info("pyspark_app_name: {pyspark_app_name}".format(pyspark_app_name = pyspark_app_name))
         logging.info("log_data_dir: {log_data_dir}".format(log_data_dir = log_data_dir))
 
         database_name = conf.get("database", "database_name")
@@ -71,7 +71,7 @@ class InitializationAndLoadParameter(object):
         logging.info("test_data_dir: {test_data_dir}".format(test_data_dir = test_data_dir))
         logging.info("stopword_data_dir: {stopword_data_dir}".format(stopword_data_dir = stopword_data_dir))
 
-        return appName, log_data_dir, database_name, database_password, message_table_name, word_table_name, train_data_dir, test_data_dir, stopword_data_dir
+        return pyspark_app_name, log_data_dir, database_name, database_password, message_table_name, word_table_name, train_data_dir, test_data_dir, stopword_data_dir
 
 
 ################################### PART3 CLASS TEST ##################################
