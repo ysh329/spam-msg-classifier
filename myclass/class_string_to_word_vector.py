@@ -16,10 +16,10 @@ __author__ = 'yuens'
 import logging
 import time
 import MySQLdb
-
+from pyspark import SparkContext, SparkConf
 ################################### PART2 CLASS && FUNCTION ###########################
 class String2WordVec(object):
-    def __init__(self, database_name):
+    def __init__(self, database_name, pyspark_app_name):
         self.start = time.clock()
 
         logging.basicConfig(level = logging.INFO,
@@ -44,6 +44,15 @@ class String2WordVec(object):
             logging.error("Fail in connecting MySQL.")
             logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
 
+        # Configure Spark
+        try:
+            conf = SparkConf().setAppName(pyspark_app_name)
+            conf = conf.setMaster("local[8]")
+            self.sc = SparkContext(conf = conf)
+            logging.info("Start pyspark successfully.")
+        except Exception as e:
+            logging.error("Fail in starting pyspark.")
+            logging.error(e)
 
 
     def __del__(self):
@@ -60,6 +69,68 @@ class String2WordVec(object):
 
 
 
+    def get_message_rdd_from_database(self, database_name, message_table_name):
+        cursor = self.con.cursor()
+
+        sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
+        sqls.append("SELECT id, split_result_clean_string FROM {database_name}.{table_name} WHERE id < 1000".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        for idx in xrange(len(sqls)):
+            sql = sqls[idx]
+            try:
+                cursor.execute(sql)
+                if idx == len(sqls)-1:
+                    id_and_clean_string_2d_tuple = cursor.fetchall()
+                    logging.info("len(id_and_clean_string_2d_tuple):{0}".format(len(id_and_clean_string_2d_tuple)))
+                    logging.info("id_and_clean_string_2d_tuple[0]:{0}".format(id_and_clean_string_2d_tuple[0]))
+                    logging.info("id_and_clean_string_2d_tuple[:3]:{0}".format(id_and_clean_string_2d_tuple[:3]))
+
+                    id_and_clean_string_list_message_rdd = self.sc.parallelize(id_and_clean_string_2d_tuple).map(lambda (id, split_result_clean_string): (int(id), split_result_clean_string.split("///")) )
+                    logging.info("id_and_clean_string_list_message_rdd.count():{0}".format(id_and_clean_string_list_message_rdd.count()))
+                    logging.info("id_and_clean_string_list_message_rdd.take(1):{0}".format(id_and_clean_string_list_message_rdd.take(1)))
+            except MySQLdb.Error, e:
+                logging.error("error SQL:{0}".format(sql))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+        cursor.close()
+
+        return id_and_clean_string_list_message_rdd
+
+
+
+    def get_word_rdd_from_database(self, database_name, word_table_name):
+        cursor = self.con.cursor()
+
+        sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
+        sqls.append("SELECT id, word FROM {database_name}.{table_name}".format(database_name = database_name, table_name = word_table_name))
+
+        for idx in xrange(len(sqls)):
+            sql = sqls[idx]
+            try:
+                cursor.execute(sql)
+                if idx == len(sqls)-1:
+                    id_and_word_2d_tuple = cursor.fetchall()
+                    logging.info("len(id_and_word_2d_tuple):{0}".format(len(id_and_word_2d_tuple)))
+                    logging.info("id_and_word_2d_tuple[0]:{0}".format(id_and_word_2d_tuple[0]))
+                    logging.info("id_and_word_2d_tuple[:2]:{0}".format(id_and_word_2d_tuple[:2]))
+
+                    id_and_word_rdd = self.sc.parallelize(id_and_word_2d_tuple).map(lambda (id, word): (int(id), word))
+                    logging.info("id_and_word_rdd.count():{0}".format(id_and_word_rdd.count()))
+                    logging.info("id_and_word_rdd.take(1):{0}".format(id_and_word_rdd.take(1)))
+            except MySQLdb.Error, e:
+                logging.error("error SQL:{0}".format(sql))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+        cursor.close()
+
+        return id_and_word_rdd
+
+
+
+    def string_to_word_vector(self, id_and_clean_string_list_message_rdd, id_and_word_rdd):
+        pass
+
+
     def string_to_index_vector(self, word_string):
         pass
 
@@ -68,8 +139,13 @@ class String2WordVec(object):
     def index_vector_to_word_vector(self, index_vector_list):
         pass
 
+
+
 ################################### PART3 CLASS TEST ##################################
 # Initialization Parameters
 database_name = "messageDB"
+message_table_name = "message_table"
+pyspark_app_name = "spam-msg_classifier"
 
-Word2Vec = String2WordVec(database_name = database_name)
+Word2Vec = String2WordVec(database_name = database_name, pyspark_app_name = pyspark_app_name)
+id_and_clean_string_list_message_rdd = Word2Vec.get_message_rdd_from_database(database_name = database_name, message_table_name = message_table_name)
