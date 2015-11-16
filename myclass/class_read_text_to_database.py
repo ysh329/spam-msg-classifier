@@ -85,23 +85,33 @@ class ReadText2DB(object):
         logging.info("The function run time is : %.03f seconds" % (self.end - self.start))
 
 
+
     def read_train_data(self, train_data_dir, stopword_data_dir):
         # sub function
         def compute_split_result_clean_string(split_result_string_list, stopword_list):
             none_stopword_bool_flag_list = map(lambda word: word not in stopword_list, split_result_string_list)
-            split_result_clean_list = map(lambda no_stopword_flag, word: no_stopword_flag * word, none_stopword_bool_flag_list, split_result_string_list)
+            stopword_num = none_stopword_bool_flag_list.count(False)
+            split_result_clean_list_without_filter = map(lambda no_stopword_flag, word: no_stopword_flag * word, none_stopword_bool_flag_list, split_result_string_list)
+            split_result_clean_list = filter(lambda word: len(word) > 0, split_result_clean_list_without_filter)
             split_result_clean_string = "///".join(split_result_clean_list)
-            return split_result_clean_string
+            split_result_clean_num = len(split_result_clean_list)
+            return split_result_clean_string, split_result_clean_num, stopword_num
 
 
-        train_data_rdd = self.sc.textFile(train_data_dir)
-        train_data_triple_rdd = train_data_rdd.map(lambda line: line.split("\t")).map(lambda (id, true_label, content): (id.strip(), true_label.strip(), content.strip()) )
-        train_data_rdd.persist(storageLevel=StorageLevel.MEMORY_ONLY_SER)
+        train_data_rdd = self.sc.textFile(name = train_data_dir, minPartitions = 1, use_unicode = True)
+        #train_data_rdd = self.sc.parallelize(train_data_rdd.take(100), 2)
+        train_data_triple_rdd = train_data_rdd.map(lambda line: line.split("\t"))\
+            .map(lambda (id, true_label, content): (id.strip(),\
+                                                    true_label.strip(),\
+                                                    content.strip().replace("'", '"').replace("\\", "")\
+                                                   )\
+                 )
+        #train_data_rdd.persist(storageLevel = StorageLevel.MEMORY_ONLY_SER)
 
         # compute final rdd
         # which contains 9 elements
-        # (id, is_train, true_label, content, word_num, split_result_string, split_result_num, split_result_clean_string, split_result_clean_num)
-        with open(stopword_data_dir)\
+        # (id, is_train, true_label, content, word_num, split_result_string, split_result_num, split_result_clean_string, split_result_clean_num, stopword_num)
+        with open(stopword_data_dir, "r")\
                 as stopword_file:
             stopword_list = map(lambda line: line.strip().decode("utf8"), stopword_file.readlines())
         is_train = 1
@@ -112,41 +122,155 @@ class ReadText2DB(object):
                                                                                            true_label,\
                                                                                            content,\
                                                                                            len(content),\
-                                                                                           "///".join(list(jieba.cut(content))),\
-                                                                                           len(list(jieba.cut(content))),\
-                                                                                           compute_split_result_clean_string(list(jieba.cut(content)), stopword_list),\
-                                                                                           len(compute_split_result_clean_string(list(jieba.cut(content)), stopword_list)),
+                                                                                           "///".join(list(jieba.cut(content.lower()))),\
+                                                                                           len(list(jieba.cut(content.lower()))),\
+                                                                                           compute_split_result_clean_string(list(jieba.cut(content.lower())), stopword_list),\
                                                                                            )\
-                                                                         )
+                                                                         )\
+                                                                          .map(lambda (id,\
+                                                                                       is_train,\
+                                                                                       true_label,\
+                                                                                       content,\
+                                                                                       word_num,\
+                                                                                       split_result_string,\
+                                                                                       split_result_num,\
+                                                                                       (split_result_clean_string,
+                                                                                        split_result_clean_num,
+                                                                                        stopword_num),\
+                                                                                       ): (id,\
+                                                                                           is_train,\
+                                                                                           true_label,\
+                                                                                           content,\
+                                                                                           word_num,\
+                                                                                           split_result_string,\
+                                                                                           split_result_num,\
+                                                                                           split_result_clean_string,\
+                                                                                           split_result_clean_num,\
+                                                                                           stopword_num,\
+                                                                                           )\
+                                                                               )
         logging.info("cleaned_and_processed_train_data_rdd.count():{0}".format(cleaned_and_processed_train_data_rdd.count()))
-
-        """
-        final_organized_train_data_rdd = cleaned_and_processed_train_data_rdd.map(lambda (id,\
-                                                                                          is_train,\
-                                                                                          true_label,\
-                                                                                          content,\
-                                                                                          word_num,\
-                                                                                          split_result_string_list): (id,\
-                                                                                                                      is_train,\
-                                                                                                                      true_label,\
-                                                                                                                      content,\
-                                                                                                                      word_num,\
-                                                                                                                      "///".join(split_result_string_list),\
-                                                                                                                      len(split_result_string_list),\
-                                                                                                                      compute_split_result_clean_string(split_result_string_list = split_result_string_list,\
-                                                                                                                                                        stopword_list = stopword_list),\
-                                                                                                                      )\
-                                                                                  )
-
-        logging.info("final_organized_train_data_rdd.count():{0}".format(final_organized_train_data_rdd.count()))
-        """
+        logging.info("cleaned_and_processed_train_data_rdd.take(1):{0}".format(cleaned_and_processed_train_data_rdd.take(1)))
+        logging.info("len(cleaned_and_processed_train_data_rdd.take(1)):{0}".format(len(cleaned_and_processed_train_data_rdd.take(1))))
         return cleaned_and_processed_train_data_rdd
 
 
 
+    def message_insert_sql_generator(self, database_name, message_table_name, cleaned_and_processed_train_data_rdd):
+        message_insert_sql_rdd = cleaned_and_processed_train_data_rdd.map(lambda (id,\
+                                                                                  is_train,\
+                                                                                  true_label,\
+                                                                                  content,\
+                                                                                  word_num,\
+                                                                                  split_result_string,\
+                                                                                  split_result_num,\
+                                                                                  split_result_clean_string,\
+                                                                                  split_result_clean_num,\
+                                                                                  stopword_num,\
+                                                                                 ):\
+                                                                              """INSERT INTO {database_name}.{message_table_name}
+                                                                                 (id,
+                                                                                  is_train,
+                                                                                  true_label,
+                                                                                  content,
+                                                                                  word_num,
+                                                                                  split_result_string,
+                                                                                  split_result_num,
+                                                                                  split_result_clean_string,
+                                                                                  split_result_clean_num,
+                                                                                  stopword_num)
+                                                                                  VALUES
+                                                                                  ({id},
+                                                                                   {is_train},
+                                                                                   {true_label},
+                                                                                   '{content}',
+                                                                                   {word_num},
+                                                                                   '{split_result_string}',
+                                                                                   {split_result_num},
+                                                                                   '{split_result_clean_string}',
+                                                                                   {split_result_clean_num},
+                                                                                   {stopword_num})"""\
+                                                                          .format(database_name = database_name,\
+                                                                                  message_table_name = message_table_name,\
+                                                                                  id = id,\
+                                                                                  is_train = is_train,\
+                                                                                  true_label = true_label,\
+                                                                                  content = content.encode('utf8'),\
+                                                                                  word_num = word_num,\
+                                                                                  split_result_string = split_result_string.encode('utf8'),\
+                                                                                  split_result_num = split_result_num,\
+                                                                                  split_result_clean_string = split_result_clean_string.encode('utf8'),\
+                                                                                  split_result_clean_num = split_result_clean_num,\
+                                                                                  stopword_num = stopword_num,\
+                                                                                 ).replace("\n", "")\
+                                                                          )
+        logging.info("message_insert_sql_rdd.count():{0}".format(message_insert_sql_rdd.count()))
+        logging.info("message_insert_sql_rdd.take(1):{0}".format(message_insert_sql_rdd.take(1)))
+        logging.info("message_insert_sql_rdd.take(3):{0}".format(message_insert_sql_rdd.take(3)))
+        #message_insert_sql_rdd.cache().is_cached
+        #logging.info("message_insert_sql_rdd.cache().is_cached:{0}".format(message_insert_sql_rdd.cache().is_cached))
+        #message_insert_sql_rdd.checkpoint("")
+        return message_insert_sql_rdd
 
-    def save_train_data_to_database(self, cleaned_and_processed_train_data_rdd):
-        pass
+
+
+    def save_train_data_to_database(self, message_insert_sql_rdd):
+        
+        message_insert_sql_id_rdd = self.sc.parallelize(xrange(message_insert_sql_rdd.count()))
+        #　拼接两个ｒｄｄ，之后filter出８个rdd，依次执行
+        #message_insert_sql_list = message_insert_sql_rdd.filter(lambda tup:)collect()
+        logging.info("len(message_insert_sql_list):{0}".format(len(message_insert_sql_list)))
+        logging.info("message_insert_sql_list[0]:{0}".format(message_insert_sql_list[0]))
+
+        success_insert = 0
+        failure_insert = 0
+
+        cursor = self.con.cursor()
+        for idx in xrange(len(message_insert_sql_list)):
+            sql = message_insert_sql_list[idx]
+            if (idx % 10000 == 0 and idx > 9998) or (idx == len(message_insert_sql_list) -1):
+                logging.info("==========={0}th element in message_insert_sql_list===========".format(idx))
+                logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx = idx, rate = float(idx+1)/ len(message_insert_sql_list)))
+                logging.info("success_rate:{success_rate}".format(success_rate = success_insert / float(success_insert + failure_insert)))
+                logging.info("success_insert:{success}, failure_insert:{failure}".format(success = success_insert, failure = failure_insert))
+
+            try:
+                cursor.execute(sql)
+                self.con.commit()
+                success_insert = success_insert + 1
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                logging.error("error SQL:{0}".format(sql))
+                failure_insert = failure_insert + 1
+        cursor.close()
+        """
+        def sql_executor(self, cursor, sql):
+            try:
+                cursor.execute(sql)
+                self.con.commit()
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                logging.error("error SQL:{0}".format(sql))
+
+
+        cursor = self.con.cursor()
+        #prepare_execute_message_insert_sql_rdd = message_insert_sql_rdd.map(lambda message_insert_sql: cursor.execute(message_insert_sql))
+        prepare_execute_message_insert_sql_rdd = message_insert_sql_rdd.map(lambda message_insert_sql: sql_executor(self=self,\
+                                                                                                                    cursor = cursor,\
+                                                                                                                    sql = message_insert_sql)\
+                                                                            )
+
+        try:
+            prepare_execute_message_insert_sql_rdd.count()
+            self.con.commit()
+        except MySQLdb.Error, e:
+            self.con.rollback()
+            logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+        cursor.close()
+        """
+
 
 
     # (id, is_train, true_label, word_num, content, split_result_string, split_result_num, split_result_clean_num)
@@ -312,6 +436,9 @@ train_data_dir = "../data/input/train_set_80W.txt"
 stopword_data_dir = "../data/input/stopword.txt"
 pyspark_app_name = "spam-msg-classifier"
 
+word_table_name = "word_table"
+message_table_name = "message_table"
+
 
 Reader = ReadText2DB(database_name = database_name,
                      train_data_dir = train_data_dir,
@@ -328,3 +455,7 @@ Reader.save_stopword_to_database(database_name = database_name,
 
 cleaned_and_processed_train_data_rdd = Reader.read_train_data(train_data_dir = train_data_dir,
                                                               stopword_data_dir = stopword_data_dir)
+message_insert_sql_rdd = Reader.message_insert_sql_generator(database_name = database_name,
+                                    message_table_name = message_table_name,
+                                    cleaned_and_processed_train_data_rdd = cleaned_and_processed_train_data_rdd)
+Reader.save_train_data_to_database(message_insert_sql_rdd = message_insert_sql_rdd)
