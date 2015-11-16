@@ -329,7 +329,7 @@ class UniqueWordSaver(object):
         logging.info("len(word_insert_sql_list):{0}".format(len(word_insert_sql_list)))
         logging.info(u"word_insert_sql_list[:3]:{0}".format(word_insert_sql_list[:99]))
 
-        success_inesrt = -initial_word_insert_sql_list_len
+        success_insert = -initial_word_insert_sql_list_len
         failure_insert = 0
         cursor = self.con.cursor()
         word_insert_sql_list_length = len(word_insert_sql_list)
@@ -337,8 +337,8 @@ class UniqueWordSaver(object):
             if (idx % 10000 == 0 and idx > 9998) or (idx == word_insert_sql_list_length-1):
                 logging.info("==========={0}th element in word_insert_sql_list===========".format(idx))
                 logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=idx, rate=float(idx+1)/word_insert_sql_list_length))
-                logging.info("success_rate:{success_rate}".format(success_rate = success_inesrt / float(success_inesrt + failure_insert)))
-                logging.info("success_insert:{success}, failure_insert:{failure}".format(success = success_inesrt, failure = failure_insert))
+                logging.info("success_rate:{success_rate}".format(success_rate = success_inesrt / float(success_insert + failure_insert)))
+                logging.info("success_insert:{success}, failure_insert:{failure}".format(success = success_insert, failure = failure_insert))
 
             sql = word_insert_sql_list[idx]
             try:

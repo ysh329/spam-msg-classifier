@@ -215,7 +215,7 @@ class ReadText2DB(object):
 
 
     def save_train_data_to_database(self, message_insert_sql_rdd):
-        
+
         message_insert_sql_id_rdd = self.sc.parallelize(xrange(message_insert_sql_rdd.count()))
         #　拼接两个ｒｄｄ，之后filter出８个rdd，依次执行
         #message_insert_sql_list = message_insert_sql_rdd.filter(lambda tup:)collect()
