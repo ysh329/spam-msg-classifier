@@ -11,7 +11,9 @@
 __author__ = 'yuens'
 ################################### PART1 IMPORT ######################################
 from myclass.class_initialization_and_load_parameter import *
+from myclass.class_create_spark import *
 from myclass.class_create_database_table import *
+from myclass.class_read_text_to_database import *
 from myclass.class_save_word_to_database import *
 ################################ PART3 MAIN ###########################################
 def main():
@@ -26,6 +28,13 @@ def main():
 
 
 
+    # class_create_spark
+    SparkCreator = CreateSpark(pyspark_app_name = pyspark_app_name)
+    pyspark_sc = SparkCreator.return_spark_context()
+    logging.info("sc.version:{0}".format(pyspark_sc.version))
+
+
+
     # class_create_database_table
     Creater = createDatabaseTable(log_data_dir = log_data_dir)
     Creater.create_database(database_name = database_name)
@@ -36,14 +45,27 @@ def main():
 
 
     # class_read_text_to_database
-
+    pyspark_app_name = "save-word-to-database"
+    Reader = ReadText2DB(database_name = database_name,\
+                         train_data_dir = train_data_dir,\
+                         stopword_data_dir = stopword_data_dir,\
+                         pyspark_sc = pyspark_sc)
+    """
+    cleaned_and_processed_train_data_rdd = Reader.read_train_data(train_data_dir = train_data_dir,\
+                                                                  stopword_data_dir = stopword_data_dir)
+    message_insert_sql_rdd = Reader.message_insert_sql_generator(database_name = database_name,\
+                                        message_table_name = message_table_name,\
+                                        cleaned_and_processed_train_data_rdd = cleaned_and_processed_train_data_rdd)
+    Reader.save_train_data_to_database(message_insert_sql_rdd = message_insert_sql_rdd)
+    """
 
 
 
     # class_save_word_to_database
+
     WordRecord = UniqueWordSaver(database_name = database_name,
                                  stopword_data_dir = stopword_data_dir,
-                                 pyspark_app_name = pyspark_app_name)
+                                 pyspark_sc = pyspark_sc)
     WordRecord.save_stopword_to_database(database_name = database_name,
                                          word_table_name = word_table_name)
     slash_split_string_1d_tuple = WordRecord.read_split_result_string_from_database(database_name = database_name,
