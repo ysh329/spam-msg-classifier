@@ -207,8 +207,7 @@ class ReadText2DB(object):
         logging.info("message_insert_sql_rdd.count():{0}".format(message_insert_sql_rdd.count()))
         logging.info("message_insert_sql_rdd.take(1):{0}".format(message_insert_sql_rdd.take(1)))
         logging.info("message_insert_sql_rdd.take(3):{0}".format(message_insert_sql_rdd.take(3)))
-        #message_insert_sql_rdd.cache().is_cached
-        #logging.info("message_insert_sql_rdd.cache().is_cached:{0}".format(message_insert_sql_rdd.cache().is_cached))
+        logging.info("message_insert_sql_rdd.cache().is_cached:{0}".format(message_insert_sql_rdd.cache().is_cached))
         #message_insert_sql_rdd.checkpoint("")
         return message_insert_sql_rdd
 
@@ -216,11 +215,17 @@ class ReadText2DB(object):
 
     def save_train_data_to_database(self, message_insert_sql_rdd):
 
-        message_insert_sql_id_rdd = self.sc.parallelize(xrange(message_insert_sql_rdd.count()))
+        #message_insert_sql_id_rdd = self.sc.parallelize(xrange(message_insert_sql_rdd.count()))
         #　拼接两个ｒｄｄ，之后filter出８个rdd，依次执行
-        #message_insert_sql_list = message_insert_sql_rdd.filter(lambda tup:)collect()
+
+        #message_insert_sql_list = message_insert_sql_rdd.collect()
+        #logging.info("len(message_insert_sql_list):{0}".format(len(message_insert_sql_list)))
+        #logging.info("message_insert_sql_list[0]:{0}".format(message_insert_sql_list[0]))
+
+        message_insert_sql_rdd.cache()
+        message_insert_sql_rdd_list= message_insert_sql_rdd.randomSplit([1, 1, 1, 1, 1, 1, 1, 1])
+        message_insert_sql_list = message_insert_sql_rdd_list[0].collect()# + rdd2.collect() + rdd3.collect() + rdd4.collect()
         logging.info("len(message_insert_sql_list):{0}".format(len(message_insert_sql_list)))
-        logging.info("message_insert_sql_list[0]:{0}".format(message_insert_sql_list[0]))
 
         success_insert = 0
         failure_insert = 0
@@ -245,7 +250,7 @@ class ReadText2DB(object):
                 failure_insert = failure_insert + 1
         cursor.close()
         """
-        def sql_executor(self, cursor, sql):
+        def sql_insert(self, cursor, sql):
             try:
                 cursor.execute(sql)
                 self.con.commit()
@@ -256,20 +261,11 @@ class ReadText2DB(object):
 
 
         cursor = self.con.cursor()
-        #prepare_execute_message_insert_sql_rdd = message_insert_sql_rdd.map(lambda message_insert_sql: cursor.execute(message_insert_sql))
-        prepare_execute_message_insert_sql_rdd = message_insert_sql_rdd.map(lambda message_insert_sql: sql_executor(self=self,\
-                                                                                                                    cursor = cursor,\
-                                                                                                                    sql = message_insert_sql)\
-                                                                            )
-
-        try:
-            prepare_execute_message_insert_sql_rdd.count()
-            self.con.commit()
-        except MySQLdb.Error, e:
-            self.con.rollback()
-            logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+        message_insert_sql_rdd.foreach(lambda sql: sql_insert(self, cursor, sql))
+        self.con.commit()
         cursor.close()
         """
+
 
 
 
