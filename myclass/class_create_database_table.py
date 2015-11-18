@@ -25,7 +25,7 @@ class createDatabaseTable(object):
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = log_data_dir,#'./main.log',
+                  filename = log_data_dir,#'./save_word_main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -148,7 +148,7 @@ class createDatabaseTable(object):
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
-log_data_dir = "./main.log"
+log_data_dir = "./save_word_main.log"
 
 Creater = createDatabaseTable(log_data_dir = log_data_dir)
 Creater.create_database(database_name = database_name)

@@ -19,7 +19,7 @@ from myclass.class_save_word_to_database import *
 def main():
     # class_initialization_and_load_parameter
     config_data_dir = "./config.ini"
-    log_data_dir = "./main.log"
+    log_data_dir = "./save_word_main.log"
     ParameterLoader = InitializationAndLoadParameter(log_data_dir = log_data_dir)
 
     pyspark_app_name, log_data_dir, database_name, database_password,\

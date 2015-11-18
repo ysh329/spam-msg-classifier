@@ -21,13 +21,13 @@ from multiprocessing import Pool
 from multiprocessing.dummy import Pool as ThreadPool
 ################################### PART2 CLASS && FUNCTION ###########################
 class UniqueWordSaver(object):
-    def __init__(self, database_name, stopword_data_dir, pyspark_app_name):
+    def __init__(self, database_name, stopword_data_dir, pyspark_sc):
         self.start = time.clock()
 
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './main.log',
+                  filename = './save_word_main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -55,9 +55,7 @@ class UniqueWordSaver(object):
 
         # Configure Spark
         try:
-            conf = SparkConf().setAppName(pyspark_app_name)
-            conf = conf.setMaster("local[8]")
-            self.sc = SparkContext(conf = conf)
+            self.sc = pyspark_sc
             logging.info("Start pyspark successfully.")
         except Exception as e:
             logging.error("Fail in starting pyspark.")
@@ -65,13 +63,14 @@ class UniqueWordSaver(object):
 
 
 
-    def __del__(self):
+
+    def __del__(self, stopword_data_dir):
         # close database
         try:
             self.con.close()
             logging.info("Success in quiting MySQL.")
-        except Exception as e:
-            logging.error(e)
+        except MySQLdb.Error, e:
+            logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
 
         # close stop word file
         try:
@@ -82,7 +81,7 @@ class UniqueWordSaver(object):
 
         logging.info("END CLASS {class_name}.".format(class_name = UniqueWordSaver.__name__))
         self.end = time.clock()
-        logging.info("The class {class_name} run time is : %0.3{delta_time} seconds".format(class_name = UniqueWordSaver.__name__, delta_time = self.end))
+        logging.info("The class {class_name} run time is : {delta_time} seconds".format(class_name = UniqueWordSaver.__name__, delta_time = self.end))
 
 
 
@@ -204,8 +203,8 @@ class UniqueWordSaver(object):
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
-        sqls.append("""SELECT split_result_string FROM {database_name}.{message_table_name} WHERE id < 1000""".format(database_name = database_name, message_table_name = message_table_name))
-        #sqls.append("""SELECT split_result_string FROM {database_name}.{message_table_name}""".format(database_name = database_name, message_table_name = message_table_name))
+        #sqls.append("""SELECT split_result_string FROM {database_name}.{message_table_name} WHERE id < 1000""".format(database_name = database_name, message_table_name = message_table_name))
+        sqls.append("""SELECT split_result_string FROM {database_name}.{message_table_name}""".format(database_name = database_name, message_table_name = message_table_name))
 
         for sql_idx in xrange(len(sqls)):
             sql = sqls[sql_idx]
@@ -252,12 +251,12 @@ class UniqueWordSaver(object):
 
 
     def word_count_for_split_string_1d_tuple_rdd(self, split_string_with_stopword_1d_tuple_rdd):
-        word_count_rdd = self.sc.parallelize(split_string_with_stopword_1d_tuple_rdd
-                                                  .reduce(lambda tuple1,tuple2: tuple1+tuple2))\
-                                                  .map(lambda word: (word, 1)\
-                                                  )\
-                                                 .reduceByKey(lambda w1,w2: w1+w2)\
-                                                 .sortBy(lambda word_tuple: -word_tuple[1])
+        word_count_rdd = self.sc.parallelize(split_string_with_stopword_1d_tuple_rdd\
+                                                  .reduce(lambda tuple1,tuple2: tuple1+tuple2)\
+                                             )\
+                                              .map(lambda word: (word, 1))\
+                                              .reduceByKey(lambda w1,w2: w1+w2)\
+                                              .sortBy(lambda word_tuple: -word_tuple[1])
 
         self.word_len_rdd = word_count_rdd.map(lambda (word, counter): (word, len(word)))
         stopword_list = self.stopword_list
@@ -337,14 +336,14 @@ class UniqueWordSaver(object):
             if (idx % 10000 == 0 and idx > 9998) or (idx == word_insert_sql_list_length-1):
                 logging.info("==========={0}th element in word_insert_sql_list===========".format(idx))
                 logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=idx, rate=float(idx+1)/word_insert_sql_list_length))
-                logging.info("success_rate:{success_rate}".format(success_rate = success_inesrt / float(success_insert + failure_insert)))
+                logging.info("success_rate:{success_rate}".format(success_rate = success_insert / float(success_insert + failure_insert)))
                 logging.info("success_insert:{success}, failure_insert:{failure}".format(success = success_insert, failure = failure_insert))
 
             sql = word_insert_sql_list[idx]
             try:
                 cursor.execute(sql)
                 self.con.commit()
-                success_inesrt = success_inesrt + 1
+                success_insert = success_insert + 1
             except MySQLdb.Error, e:
                 self.con.rollback()
                 logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
@@ -352,9 +351,9 @@ class UniqueWordSaver(object):
                 failure_insert = failure_insert + 1
         cursor.close()
 
-        logging.info("success_insert:{0}".format(success_inesrt))
+        logging.info("success_insert:{0}".format(success_insert))
         logging.info("failure_insert:{0}".format(failure_insert))
-        logging.info("success insert rate:{0}".format(float(success_inesrt)/(success_inesrt + failure_insert)))
+        logging.info("success insert rate:{0}".format(float(success_insert)/(success_insert + failure_insert)))
         return
 
 

@@ -16,16 +16,15 @@ __author__ = 'yuens'
 import logging
 import time
 import MySQLdb
-from pyspark import SparkContext, SparkConf
 ################################### PART2 CLASS && FUNCTION ###########################
 class String2WordVec(object):
-    def __init__(self, database_name, pyspark_app_name):
+    def __init__(self, database_name, pyspark_sc):
         self.start = time.clock()
 
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './main.log',
+                  filename = './save_word_main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -46,9 +45,7 @@ class String2WordVec(object):
 
         # Configure Spark
         try:
-            conf = SparkConf().setAppName(pyspark_app_name)
-            conf = conf.setMaster("local[8]")
-            self.sc = SparkContext(conf = conf)
+            self.sc = pyspark_sc
             logging.info("Start pyspark successfully.")
         except Exception as e:
             logging.error("Fail in starting pyspark.")
@@ -145,7 +142,9 @@ class String2WordVec(object):
 # Initialization Parameters
 database_name = "messageDB"
 message_table_name = "message_table"
-pyspark_app_name = "spam-msg_classifier"
+from pyspark import SparkContext, SparkConf
 
-Word2Vec = String2WordVec(database_name = database_name, pyspark_app_name = pyspark_app_name)
+pyspark_sc = SparkContext("")
+
+Word2Vec = String2WordVec(database_name = database_name, pyspark_sc = pyspark_sc)
 id_and_clean_string_list_message_rdd = Word2Vec.get_message_rdd_from_database(database_name = database_name, message_table_name = message_table_name)
