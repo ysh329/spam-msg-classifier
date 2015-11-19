@@ -63,7 +63,7 @@ class String2WordVec(object):
 
         logging.info("END CLASS {class_name}.".format(class_name = String2WordVec.__name__))
         self.end = time.clock()
-        logging.info("The class {class_name} run time is : %0.3{delta_time} seconds".format(class_name = String2WordVec.__name__, delta_time = self.end))
+        logging.info("The class {class_name} run time is : {delta_time} seconds".format(class_name = String2WordVec.__name__, delta_time = self.end))
 
 
 
@@ -74,6 +74,7 @@ class String2WordVec(object):
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
         #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id < 1000".format(database_name = database_name, table_name = message_table_name))
         sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        logging.info("len(sqls):{0}".format(len(sqls)))
         for idx in xrange(len(sqls)):
             sql = sqls[idx]
             try:
@@ -219,23 +220,127 @@ class String2WordVec(object):
         logging.info("spam_message_word_count_rdd.take(3):{0}".format(spam_message_word_count_rdd.take(3)))
 
         normal_message_word_count_rdd = self.sc.parallelize(normal_message_word_list).map(lambda word: (word, 1)).reduceByKey(add)
-        logging.info("".format(nor))
-
-
-
         logging.info("normal_message_word_count_rdd.count():{0}".format(normal_message_word_count_rdd.count()))
+        logging.info("normal_message_word_count_rdd.persist().is_cached:{0}".format(normal_message_word_count_rdd.persist().is_cached))
+        logging.info("normal_message_word_count_rdd.take(3):{0}".format(normal_message_word_count_rdd.take(3)))
+
+        return spam_message_word_count_rdd, normal_message_word_count_rdd
 
 
+
+    def save_true_pos_and_neg_num_to_database(self, database_name, word_table_name, spam_message_word_count_rdd, normal_message_word_count_rdd):
+        # sub-function
+        def word_count_for_spam_and_normal_message_sql_generator(spam_or_normal, word_count_tuple, database_name, word_table_name):
+            word = word_count_tuple[0]
+            if spam_or_normal == "spam":
+                # spam word ==> true_pos_num
+                true_pos_num = word_count_tuple[1]
+                sql = """UPDATE {database_name}.{table_name}
+                            SET true_pos_num={true_pos_num}
+                            WHERE word='{word}'""".format(database_name = database_name,\
+                                                        table_name = word_table_name,\
+                                                        true_pos_num = true_pos_num,\
+                                                        word = word.encode("utf8"))
+            else:
+                # normal word ==> true_neg_num
+                true_neg_num = word_count_tuple[1]
+                sql = """UPDATE {database_name}.{table_name}
+                            SET true_neg_num={true_neg_num}
+                            WHERE word='{word}'""".format(database_name = database_name,\
+                                                        table_name = word_table_name,\
+                                                        true_neg_num = true_neg_num,\
+                                                        word = word.encode("utf8"))
+            return sql
+
+
+        # generate word count sql for spam and normal message
+        spam_message_word_count_sql_rdd = spam_message_word_count_rdd\
+            .map(lambda word_count_tuple: word_count_for_spam_and_normal_message_sql_generator(spam_or_normal = "spam",\
+                                                                                               word_count_tuple = word_count_tuple,\
+                                                                                               database_name = database_name,\
+                                                                                               word_table_name = word_table_name)\
+                 )
+        logging.info("spam_message_word_count_sql_rdd.count():{0}".format(spam_message_word_count_sql_rdd.count()))
+        logging.info("spam_message_word_count_sql_rdd.persist().is_cached:{0}".format(spam_message_word_count_sql_rdd.persist().is_cached))
+        logging.info("spam_message_word_count_sql_rdd.take(3):{0}".format(spam_message_word_count_sql_rdd.take(3)))
+
+        normal_message_word_count_sql_rdd = normal_message_word_count_rdd\
+            .map(lambda word_count_tuple: word_count_for_spam_and_normal_message_sql_generator(spam_or_normal = "normal",\
+                                                                                               word_count_tuple = word_count_tuple,\
+                                                                                               database_name = database_name,\
+                                                                                               word_table_name = word_table_name)\
+                 )
+        logging.info("normal_message_word_count_sql_rdd.count():{0}".format(normal_message_word_count_sql_rdd.count()))
+        logging.info("normal_message_word_count_sql_rdd.persist().is_cached:{0}".format(normal_message_word_count_sql_rdd.persist().is_cached))
+        logging.info("spam_message_word_count_sql_rdd.take(3):{0}".format(spam_message_word_count_sql_rdd.take(3)))
+
+
+        # update normal message for true_pos_num
+        normal_message_word_count_sql_rdd_random_split_list = normal_message_word_count_sql_rdd.randomSplit([1,1,1,1, 1,1,1,1])
+        cursor = self.con.cursor()
+        for rdd_idx in xrange(len(normal_message_word_count_sql_rdd_random_split_list)):
+            logging.info("normal_message_word_count_sql_rdd_random_split_list: rdd_idx:{0}".format(rdd_idx))
+
+            normal_message_sql_rdd = normal_message_word_count_sql_rdd_random_split_list[rdd_idx]
+            normal_message_sql_list = normal_message_sql_rdd.collect()
+            normal_message_sql_list_length = len(normal_message_sql_list)
+
+            success_update = 0
+            failure_update = 0
+            for sql_idx in xrange(normal_message_sql_list_length):
+                if (sql_idx % 10000 == 0 and sql_idx > 9998) or (sql_idx == normal_message_sql_list_length-1):
+                    logging.info("==========={sql_idx}th element in normal_message_sql_list of {rdd_idx}th random split rdd===========".format(sql_idx = sql_idx, rdd_idx = rdd_idx))
+                    logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=sql_idx, rate=float(sql_idx+1)/normal_message_sql_list_length))
+                    logging.info("success_rate:{success_rate}".format(success_rate = success_update / float(success_update + failure_update)))
+                    logging.info("success_update:{success}, failure_update:{failure}".format(success = success_update, failure = failure_update))
+                sql = normal_message_sql_list[sql_idx]
+                try:
+                    cursor.execute(sql)
+                    self.con.commit()
+                    success_update = success_update + 1
+                except MySQLdb.Error, e:
+                    self.con.rollback()
+                    logging.error("error SQL:{0}".format(sql))
+                    logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                    failure_update = failure_update + 1
+
+        # update spam message for true_neg_num
+        success_update = 0
+        failure_update = 0
+        spam_message_sql_list = spam_message_word_count_sql_rdd.collect()
+        spam_message_sql_list_length = len(spam_message_sql_list)
+        for sql_idx in xrange(spam_message_sql_list_length):
+            if (sql_idx % 10000 == 0 and sql_idx > 9998) or (sql_idx == spam_message_sql_list_length-1):
+                logging.info("==========={0}th element in spam_message_sql_list===========".format(sql_idx))
+                logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=sql_idx, rate=float(sql_idx+1)/spam_message_sql_list_length))
+                logging.info("success_rate:{success_rate}".format(success_rate = success_update / float(success_update + failure_update)))
+                logging.info("success_update:{success}, failure_update:{failure}".format(success = success_update, failure = failure_update))
+
+            sql = spam_message_sql_list[sql_idx]
+            try:
+                cursor.execute(sql)
+                self.con.commit()
+                success_update = success_update + 1
+            except MySQLdb.Error, e:
+                self.con.rollback()
+                logging.error("error SQL:{0}".format(sql))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                failure_update = failure_update + 1
+        cursor.close()
 
 ################################### PART3 CLASS TEST ##################################
+"""
 # Initialization Parameters
 database_name = "messageDB"
 message_table_name = "message_table"
+word_table_name = "word_table"
 from pyspark import SparkContext
 pyspark_sc = SparkContext("")
 
 Word2Vec = String2WordVec(database_name = database_name, pyspark_sc = pyspark_sc)
 spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = Word2Vec.get_message_rdd_from_database(database_name = database_name, message_table_name = message_table_name)
-spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2Vec.string_list_rdd_to_dict_rdd(spam_message_clean_string_list_rdd = spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
+#spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2Vec.string_list_rdd_to_dict_rdd(spam_message_clean_string_list_rdd = spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
 
-Word2Vec.word_count_for_spam_and_normal_message(spam_message_clean_string_list_rdd =  spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
+spam_message_word_count_rdd, normal_message_word_count_rdd = Word2Vec.word_count_for_spam_and_normal_message(spam_message_clean_string_list_rdd =  spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
+Word2Vec.save_true_pos_and_neg_num_to_database(database_name = database_name, word_table_name = word_table_name, spam_message_word_count_rdd = spam_message_word_count_rdd, normal_message_word_count_rdd = normal_message_word_count_rdd)
+"""

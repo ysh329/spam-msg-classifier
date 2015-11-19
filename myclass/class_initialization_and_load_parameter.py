@@ -23,7 +23,7 @@ class InitializationAndLoadParameter(object):
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = log_data_dir,#'./save_word_main.log',#log_data_dir,
+                  filename = log_data_dir,#'./2.log',#log_data_dir,
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)

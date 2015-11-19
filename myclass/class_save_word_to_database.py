@@ -27,7 +27,7 @@ class UniqueWordSaver(object):
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './save_word_main.log',
+                  filename = './2.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -89,7 +89,7 @@ class UniqueWordSaver(object):
         # word: stopword
         try:
             self.stopword_list = list(set(map(lambda stopword: stopword.strip(), self.stopword_f.readlines())))
-            self.stopword_list[0] = " "
+            #self.stopword_list[0] = " "
             logging.info("Success in reading file to variable.")
             logging.info("type(stopword_list): {stopword_list_type}".format(stopword_list_type = type(self.stopword_list)))
             logging.info("len(stopword_list): {stopword_list_length}".format(stopword_list_length = len(self.stopword_list)))
