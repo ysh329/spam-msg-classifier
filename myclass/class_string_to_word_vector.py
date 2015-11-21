@@ -53,6 +53,7 @@ class String2WordVec(object):
             logging.error(e)
 
 
+
     def __del__(self):
         # close database
         try:
@@ -72,8 +73,8 @@ class String2WordVec(object):
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
-        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id < 1000".format(database_name = database_name, table_name = message_table_name))
-        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id < 10".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
         logging.info("len(sqls):{0}".format(len(sqls)))
         for idx in xrange(len(sqls)):
             sql = sqls[idx]
@@ -120,11 +121,11 @@ class String2WordVec(object):
         except Exception as e:
             logging.error(e)
 
-        return spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd
+        return spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd, id_and_true_label_and_clean_string_list_message_rdd
 
 
 
-    def get_word_rdd_from_database(self, database_name, word_table_name):
+    def get_word_broadcast_from_database(self, database_name, word_table_name):
         cursor = self.con.cursor()
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
@@ -140,17 +141,24 @@ class String2WordVec(object):
                     logging.info("len(id_and_word_2d_tuple):{0}".format(len(id_and_word_2d_tuple)))
                     logging.info("id_and_word_2d_tuple[0]:{0}".format(id_and_word_2d_tuple[0]))
                     logging.info("id_and_word_2d_tuple[:2]:{0}".format(id_and_word_2d_tuple[:2]))
-
-                    id_and_word_rdd = self.sc.parallelize(id_and_word_2d_tuple).map(lambda (id, word): (int(id), word))
-                    logging.info("id_and_word_rdd.persist().is_cached:{0}".format(id_and_word_rdd.persist().is_cached))
-                    logging.info("id_and_word_rdd.count():{0}".format(id_and_word_rdd.count()))
-                    logging.info("id_and_word_rdd.take(1):{0}".format(id_and_word_rdd.take(1)))
             except MySQLdb.Error, e:
                 logging.error("error SQL:{0}".format(sql))
                 logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
         cursor.close()
 
-        return id_and_word_rdd
+        # transform id_and_word_rdd to id_and_word_broadcast
+        try:
+            id_and_word_rdd = self.sc.parallelize(id_and_word_2d_tuple).map(lambda (id, word): (int(id), word))
+            logging.info("id_and_word_rdd.persist().is_cached:{0}".format(id_and_word_rdd.persist().is_cached))
+            logging.info("id_and_word_rdd.count():{0}".format(id_and_word_rdd.count()))
+            logging.info("id_and_word_rdd.take(1):{0}".format(id_and_word_rdd.take(1)))
+
+            id_and_word_broadcast = self.sc.broadcast(id_and_word_rdd.collect())
+            logging.info("format(id_and_word_broadcast.value[:4]:{0}".format(id_and_word_broadcast.value[:4]))
+        except Exception as e:
+            logging.error(e)
+
+        return id_and_word_broadcast
 
 
 
@@ -187,13 +195,51 @@ class String2WordVec(object):
 
 
 
-    def string_to_word_vector(self, id_and_clean_string_list_message_rdd, id_and_word_rdd):
+    def string_to_word_vector(self, id_and_word_broadcast, id_and_true_label_and_clean_string_list_message_rdd):
         pass
 
 
 
-    def string_to_index_vector(self, word_string):
-        pass
+    def string_list_rdd_to_index_vector(self, id_and_word_broadcast, id_and_true_label_and_clean_string_list_message_rdd):
+        # sub-function
+        def string_list_to_index_list(string_list, id_and_word_broadcast):
+            index_list = []
+            id_and_word_list = id_and_word_broadcast.value
+            for idx in xrange(len(string_list)):
+                word_in_string_list = string_list[idx]
+                id_and_word_in_list_tuple = filter(lambda (id, word_in_word_list):\
+                                                       word_in_string_list == word_in_word_list,\
+                                                   id_and_word_list)
+                print "id_and_word_in_list_tuple:", id_and_word_in_list_tuple
+                id_in_word_list = id_and_word_in_list_tuple[0][0]
+                index_list.append(id_in_word_list)
+            return index_list
+
+
+        try:
+            id_and_string_list_rdd = id_and_true_label_and_clean_string_list_message_rdd\
+                .map(lambda (id, true_label, clean_string_list_message):(id, clean_string_list_message))
+            logging.info("id_and_string_list_rdd.persist().is_cached:{0}".format(id_and_string_list_rdd.persist().is_cached))
+            logging.info("id_and_string_list_rdd.count():{0}".format(id_and_string_list_rdd.count()))
+            logging.info("id_and_string_list_rdd.take(3):{0}".format(id_and_string_list_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        try:
+            id_and_index_list_rdd = id_and_string_list_rdd\
+                .map(lambda (id, string_list): (id,\
+                                                string_list_to_index_list(string_list = string_list,\
+                                                                          id_and_word_broadcast = id_and_word_broadcast)\
+                                                )\
+                     )
+            logging.info("id_and_index_list_rdd.persist().is_cached:{0}".format(id_and_index_list_rdd.persist().is_cached))
+            logging.info("id_and_index_list_rdd.count():{0}".format(id_and_index_list_rdd.count()))
+            logging.info("id_and_index_list_rdd.take(3):{0}".format(id_and_index_list_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        return id_and_index_list_rdd
+
 
 
 
@@ -338,9 +384,36 @@ from pyspark import SparkContext
 pyspark_sc = SparkContext("")
 
 Word2Vec = String2WordVec(database_name = database_name, pyspark_sc = pyspark_sc)
-spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = Word2Vec.get_message_rdd_from_database(database_name = database_name, message_table_name = message_table_name)
+spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd,\
+id_and_true_label_and_clean_string_list_message_rdd = Word2Vec.\
+    get_message_rdd_from_database(database_name = database_name,\
+                                  message_table_name = message_table_name)
 #spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2Vec.string_list_rdd_to_dict_rdd(spam_message_clean_string_list_rdd = spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
 
 spam_message_word_count_rdd, normal_message_word_count_rdd = Word2Vec.word_count_for_spam_and_normal_message(spam_message_clean_string_list_rdd =  spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
 Word2Vec.save_true_pos_and_neg_num_to_database(database_name = database_name, word_table_name = word_table_name, spam_message_word_count_rdd = spam_message_word_count_rdd, normal_message_word_count_rdd = normal_message_word_count_rdd)
 """
+database_name = "messageDB"
+message_table_name = "message_table"
+word_table_name = "word_table"
+from pyspark import SparkContext
+pyspark_sc = SparkContext("")
+
+Word2Vec = String2WordVec(database_name = database_name,\
+                          pyspark_sc = pyspark_sc)
+
+id_and_word_broadcast = Word2Vec.get_word_broadcast_from_database(database_name = database_name,\
+                                                                  word_table_name = word_table_name)
+
+spam_message_clean_string_list_rdd, normal_message_clean_string_list_rdd,\
+id_and_true_label_and_clean_string_list_message_rdd = Word2Vec.\
+    get_message_rdd_from_database(database_name = database_name,\
+                                  message_table_name = message_table_name)
+
+spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2Vec\
+    .string_list_rdd_to_dict_rdd(spam_message_clean_string_list_rdd = spam_message_clean_string_list_rdd,\
+                                 normal_message_clean_string_list_rdd = normal_message_clean_string_list_rdd)
+
+id_and_index_list_rdd = Word2Vec.\
+    string_list_rdd_to_index_vector(id_and_word_broadcast = id_and_word_broadcast,\
+                                    id_and_true_label_and_clean_string_list_message_rdd = id_and_true_label_and_clean_string_list_message_rdd)
