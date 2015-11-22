@@ -73,8 +73,8 @@ class String2WordVec(object):
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
-        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id < 10".format(database_name = database_name, table_name = message_table_name))
-        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id > 999 && id < 10000".format(database_name = database_name, table_name = message_table_name))
+        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
         logging.info("len(sqls):{0}".format(len(sqls)))
         for idx in xrange(len(sqls)):
             sql = sqls[idx]
@@ -195,27 +195,14 @@ class String2WordVec(object):
 
 
 
+
+
     def string_to_word_vector(self, id_and_word_broadcast, id_and_true_label_and_clean_string_list_message_rdd):
         pass
 
 
 
     def string_list_rdd_to_index_vector(self, id_and_word_broadcast, id_and_true_label_and_clean_string_list_message_rdd):
-        # sub-function
-        def string_list_to_index_list(string_list, id_and_word_broadcast):
-            index_list = []
-            id_and_word_list = id_and_word_broadcast.value
-            for idx in xrange(len(string_list)):
-                word_in_string_list = string_list[idx]
-                id_and_word_in_list_tuple = filter(lambda (id, word_in_word_list):\
-                                                       word_in_string_list == word_in_word_list,\
-                                                   id_and_word_list)
-                print "id_and_word_in_list_tuple:", id_and_word_in_list_tuple
-                id_in_word_list = id_and_word_in_list_tuple[0][0]
-                index_list.append(id_in_word_list)
-            return index_list
-
-
         try:
             id_and_string_list_rdd = id_and_true_label_and_clean_string_list_message_rdd\
                 .map(lambda (id, true_label, clean_string_list_message):(id, clean_string_list_message))
@@ -225,11 +212,35 @@ class String2WordVec(object):
         except Exception as e:
             logging.error(e)
 
+        # sub-function
+        def string_list_to_index_list(message_id, string_list, id_and_word_list):
+            index_list = []
+            for idx in xrange(len(string_list)):
+                word_in_string_list = string_list[idx]
+                try:
+                    id_and_word_in_list_tuple = filter(lambda (id, word_in_word_list):\
+                                                           word_in_string_list == word_in_word_list,\
+                                                       id_and_word_list)
+                    id_in_word_list = id_and_word_in_list_tuple[0][0]
+                    index_list.append(str(id_in_word_list))
+                except Exception as e:
+                    """
+                    print "id_and_word_in_list_tuple:", id_and_word_in_list_tuple
+                    print "word_in_string_list", word_in_string_list
+                    print "id_and_word_in_list_tuple[1] == word_in_string_list", id_and_word_in_list_tuple[1] == word_in_string_list
+                    """
+                    logging.error("message id:{0}.lack its words in word table.".format(message_id))
+                    logging.error(e)
+                    index_list.append("not found")
+            return index_list
+
         try:
+            id_and_word_list = id_and_word_broadcast.value
             id_and_index_list_rdd = id_and_string_list_rdd\
                 .map(lambda (id, string_list): (id,\
-                                                string_list_to_index_list(string_list = string_list,\
-                                                                          id_and_word_broadcast = id_and_word_broadcast)\
+                                                string_list_to_index_list(message_id = id,\
+                                                                          string_list = string_list,\
+                                                                          id_and_word_list = id_and_word_list)\
                                                 )\
                      )
             logging.info("id_and_index_list_rdd.persist().is_cached:{0}".format(id_and_index_list_rdd.persist().is_cached))
@@ -240,6 +251,71 @@ class String2WordVec(object):
 
         return id_and_index_list_rdd
 
+
+
+    def save_index_list_to_database(self, database_name, message_table_name, id_and_index_list_rdd):
+        try:
+            id_and_index_string_rdd = id_and_index_list_rdd.map(lambda (id, index_list): (id, "///".join(index_list)))
+            logging.info("id_and_index_string_rdd.persist().is_cached:{0}".format(id_and_index_string_rdd.persist().is_cached))
+            logging.info("id_and_index_string_rdd.count():{0}".format(id_and_index_string_rdd.count()))
+            logging.info("id_and_index_string_rdd.take(3):{0}".format(id_and_index_string_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        # sub-function
+        def index_vector_update_sql_generator(database_name, message_table_name, index_string, id):
+            try:
+                sql = """UPDATE {database_name}.{table_name}
+                            SET word_index_string='{index_string}'
+                            WHERE id={id}""".format(database_name = database_name,\
+                                                    table_name = message_table_name,\
+                                                    index_string = index_string,\
+                                                    id = id)
+            except Exception as e:
+                logging.error(e)
+            return sql
+
+        # generate update sql rdd
+        try:
+            index_string_update_sql_rdd = id_and_index_string_rdd.map(lambda (id, index_string):\
+                                                                      index_vector_update_sql_generator(database_name = database_name,\
+                                                                                                        message_table_name = message_table_name,\
+                                                                                                        index_string = index_string,\
+                                                                                                        id = id)\
+                                                                      )
+            logging.info("index_string_update_sql_rdd.persist().is_cached:{0}".format(index_string_update_sql_rdd.persist().is_cached))
+            logging.info("index_string_update_sql_rdd.count():{0}".format(index_string_update_sql_rdd.count()))
+            logging.info("index_string_update_sql_rdd.take(3):{0}".format(index_string_update_sql_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        index_string_update_sql_rdd_list = index_string_update_sql_rdd.randomSplit([1,1,1,1, 1,1,1,1])
+        cursor = self.con.cursor()
+        for rdd_idx in xrange(len(index_string_update_sql_rdd_list)):
+            logging.info("index_string_update_sql_rdd_list: rdd_idx:{0}".format(rdd_idx))
+
+            index_string_sql_rdd = index_string_update_sql_rdd_list[rdd_idx]
+            index_string_sql_list = index_string_sql_rdd.collect()
+            index_string_sql_list_length = len(index_string_sql_list)
+
+            success_update = 0
+            failure_update = 0
+            for sql_idx in xrange(index_string_sql_list_length):
+                if (sql_idx % 10000 == 0 and sql_idx > 9998) or (sql_idx == index_string_sql_list_length-1):
+                    logging.info("==========={sql_idx}th element in index_string_sql_list of {rdd_idx}th random split rdd===========".format(sql_idx = sql_idx, rdd_idx = rdd_idx))
+                    logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=sql_idx, rate=float(sql_idx+1)/index_string_sql_list_length))
+                    logging.info("success_rate:{success_rate}".format(success_rate = success_update / float(success_update + failure_update + 0.00001)))
+                    logging.info("success_update:{success}, failure_update:{failure}".format(success = success_update, failure = failure_update))
+                sql = index_string_sql_list[sql_idx]
+                try:
+                    cursor.execute(sql)
+                    self.con.commit()
+                    success_update = success_update + 1
+                except MySQLdb.Error, e:
+                    self.con.rollback()
+                    logging.error("error SQL:{0}".format(sql))
+                    logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                    failure_update = failure_update + 1
 
 
 
@@ -284,9 +360,9 @@ class String2WordVec(object):
                 sql = """UPDATE {database_name}.{table_name}
                             SET true_pos_num={true_pos_num}
                             WHERE word='{word}'""".format(database_name = database_name,\
-                                                        table_name = word_table_name,\
-                                                        true_pos_num = true_pos_num,\
-                                                        word = word.encode("utf8"))
+                                                          table_name = word_table_name,\
+                                                          true_pos_num = true_pos_num,\
+                                                          word = word.encode("utf8"))
             else:
                 # normal word ==> true_neg_num
                 true_neg_num = word_count_tuple[1]
@@ -417,3 +493,7 @@ spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2
 id_and_index_list_rdd = Word2Vec.\
     string_list_rdd_to_index_vector(id_and_word_broadcast = id_and_word_broadcast,\
                                     id_and_true_label_and_clean_string_list_message_rdd = id_and_true_label_and_clean_string_list_message_rdd)
+
+Word2Vec.save_index_list_to_database(database_name = database_name,\
+                                     message_table_name = message_table_name,\
+                                     id_and_index_list_rdd = id_and_index_list_rdd)
