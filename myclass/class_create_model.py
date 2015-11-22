@@ -67,6 +67,42 @@ class CreateModel(object):
 
 
 
+    def get_id_and_word_index_string_from_database(self, database_name, message_table_name):
+        cursor = self.con.cursor()
+
+        sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
+        sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name} WHERE id < 100".format(database_name = database_name, table_name = message_table_name))
+        logging.info("len(sqls):{0}".format(len(sqls)))
+
+        for idx in xrange(len(sqls)):
+            sql = sqls[idx]
+            try:
+                cursor.execute(sql)
+                if idx == len(sqls)-1:
+                    id_and_word_index_string_tuple = cursor.fetchall()
+                    logging.info("len(id_and_word_index_string_tuple):{0}".format(len(id_and_word_index_string_tuple)))
+                    logging.info("id_and_word_index_string_tuple[:3]:{0}".format(id_and_word_index_string_tuple[:3]))
+
+            except MySQLdb.Error, e:
+                logging.error("error SQL:{0}".format(sql))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                return
+
+        try:
+            id_and_word_index_string_rdd = self.sc.parallelize(id_and_word_index_string_tuple)\
+                .map(lambda (id, word_index_string): (int(id), word_index_string.split("///")))
+            logging.info("id_and_word_index_string_rdd.persist().is_cached:{0}".format(id_and_word_index_string_rdd.persist().is_cached))
+            logging.info("id_and_word_index_string_rdd.count():{0}".format(id_and_word_index_string_rdd.count()))
+            logging.info("id_and_word_index_string_rdd.take(3):{0}".format(id_and_word_index_string_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        return id_and_word_index_string_rdd
+
+
+
     def get_id_and_all_num_and_true_pos_num_and_true_neg_num_from_database(self, database_name, word_table_name):
         cursor = self.con.cursor()
 
