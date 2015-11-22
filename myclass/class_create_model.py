@@ -72,8 +72,8 @@ class CreateModel(object):
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
-        sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
-        #sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name} WHERE id < 100".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name} WHERE id < 100".format(database_name = database_name, table_name = message_table_name))
         logging.info("len(sqls):{0}".format(len(sqls)))
 
         for idx in xrange(len(sqls)):
@@ -289,12 +289,18 @@ class CreateModel(object):
         # sub-function
         # improved naive bayes
         def compute_normal_message_prob(word_index_list, id_and_true_neg_pro_tuple_list, prob_of_normal_message_given_normal_category_prob):
-            normal_message_prob = 0
+            normal_message_prob = prob_of_normal_message_given_normal_category_prob
+
+            for idx in xrange(len(word_index_list)):
+                word_index = word_index_list[idx]
+                normal_message_prob = normal_message_prob * id_and_word_and_true_neg_pro_tuple_list[word_index-1][1]
+
             return normal_message_prob
 
         # word id
         try:
             id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_broadcast.value
+            id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_tuple_list.sort()
             id_and_true_neg_pro_tuple_list = map(lambda (id, word, true_neg_pro):\
                                                      (id, true_neg_pro),\
                                                  id_and_word_and_true_neg_pro_tuple_list\
