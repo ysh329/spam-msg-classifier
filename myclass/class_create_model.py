@@ -67,7 +67,7 @@ class CreateModel(object):
 
 
 
-    def get_id_and_word_index_string_from_database(self, database_name, message_table_name):
+    def get_id_and_word_index_list_from_database(self, database_name, message_table_name):
         cursor = self.con.cursor()
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
@@ -91,15 +91,15 @@ class CreateModel(object):
                 return
 
         try:
-            id_and_word_index_string_rdd = self.sc.parallelize(id_and_word_index_string_tuple)\
+            id_and_word_index_list_rdd = self.sc.parallelize(id_and_word_index_string_tuple)\
                 .map(lambda (id, word_index_string): (int(id), word_index_string.split("///")))
-            logging.info("id_and_word_index_string_rdd.persist().is_cached:{0}".format(id_and_word_index_string_rdd.persist().is_cached))
-            logging.info("id_and_word_index_string_rdd.count():{0}".format(id_and_word_index_string_rdd.count()))
-            logging.info("id_and_word_index_string_rdd.take(3):{0}".format(id_and_word_index_string_rdd.take(3)))
+            logging.info("id_and_word_index_list_rdd.persist().is_cached:{0}".format(id_and_word_index_list_rdd.persist().is_cached))
+            logging.info("id_and_word_index_list_rdd.count():{0}".format(id_and_word_index_list_rdd.count()))
+            logging.info("id_and_word_index_list_rdd.take(3):{0}".format(id_and_word_index_list_rdd.take(3)))
         except Exception as e:
             logging.error(e)
 
-        return id_and_word_index_string_rdd
+        return id_and_word_index_list_rdd
 
 
 
@@ -285,34 +285,98 @@ class CreateModel(object):
 
 
 
-    def compute_normal_message_prob_in_train_data_rdd(self, id_and_split_string_list_rdd, id_and_word_and_true_neg_pro_broadcast, prob_of_normal_message_given_normal_category_prob):
+    def compute_normal_message_prob_in_train_data_rdd(self, id_and_word_index_list_rdd, id_and_word_and_true_neg_pro_broadcast, prob_of_normal_message_given_normal_category_prob):
         # sub-function
-        def compute_normal_message_prob(split_string_list, word_and_true_neg_pro_list, prob_of_normal_message_given_normal_category_prob):
-            word_and_true_neg_pro_list
-            pass
+        # improved naive bayes
+        def compute_normal_message_prob(word_index_list, id_and_true_neg_pro_tuple_list, prob_of_normal_message_given_normal_category_prob):
+            normal_message_prob = 0
+            return normal_message_prob
+
+        # word id
+        try:
+            id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_broadcast.value
+            id_and_true_neg_pro_tuple_list = map(lambda (id, word, true_neg_pro):\
+                                                     (id, true_neg_pro),\
+                                                 id_and_word_and_true_neg_pro_tuple_list\
+                                                 )
+            logging.info("len(id_and_true_neg_pro_tuple_list):{0}".format(len(id_and_true_neg_pro_tuple_list)))
+            logging.info("id_and_true_neg_pro_tuple_list[:3]:{0}".format(id_and_true_neg_pro_tuple_list[:3]))
+        except Exception as e:
+            logging.error(e)
+
+        # message id
+        try:
+            id_and_is_spam_prob_rdd = id_and_word_index_list_rdd.map(lambda (message_id, word_index_list):\
+                                                                         (message_id,\
+                                                                          compute_normal_message_prob(word_index_list = word_index_list,\
+                                                                                                      id_and_true_neg_pro_tuple_list = id_and_true_neg_pro_tuple_list,\
+                                                                                                      prob_of_normal_message_given_normal_category_prob = prob_of_normal_message_given_normal_category_prob)\
+                                                                          )\
+                                                                     )
+            logging.info("id_and_is_spam_prob_rdd.persist().is_cached:{0}".format(id_and_is_spam_prob_rdd.persist().is_cached))
+            logging.info("id_and_is_spam_prob_rdd.count():{0}".format(id_and_is_spam_prob_rdd.count()))
+            logging.info("id_and_is_spam_prob_rdd.take(3):{0}".format(id_and_is_spam_prob_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+        return id_and_is_spam_prob_rdd
 
 
-        id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_broadcast.value
-        word_and_true_neg_pro_list = map(lambda (id, word, true_neg_pro):\
-                                             (word, true_neg_pro),\
-                                         id_and_word_and_true_neg_pro_tuple_list\
-                                         )
-        logging.info("len(word_and_true_neg_pro_list):{0}".format(len(word_and_true_neg_pro_list)))
-        logging.info("word_and_true_neg_pro_list[:3]:{0}".format(word_and_true_neg_pro_list[:3]))
 
-        id_and_is_spam_prob_rdd = id_and_split_string_list_rdd.map(lambda (message_id, split_string_list):\
-                                                                       (message_id,\
-                                                                        compute_normal_message_prob(split_string_list = split_string_list,\
-                                                                                                    word_and_true_neg_pro_list = word_and_true_neg_pro_list,\
-                                                                                                    prob_of_normal_message_given_normal_category_prob = prob_of_normal_message_given_normal_category_prob)\
-                                                                        )\
-                                                              )
+    def save_message_is_spam_prob_to_database(self, id_and_is_spam_prob_rdd, database_name, message_table_name):
+        def is_spam_prob_for_message_sql_generator(id, is_spam_prob, database_name, message_table_name):
+            sql = """UPDATE {database_name}.{table_name}
+                            SET is_spam_prob={is_spam_prob}
+                            WHERE id={id}""".format(database_name = database_name,\
+                                                    table_name = message_table_name,\
+                                                    is_spam_prob = is_spam_prob,\
+                                                    id = id\
+                                                    )
+            return sql
 
+        # generate update sql
+        try:
+            id_and_is_spam_prob_update_sql_rdd = id_and_is_spam_prob_rdd\
+                .map(lambda (id, is_spam_prob): is_spam_prob_for_message_sql_generator(id = id,\
+                                                                                       is_spam_prob = is_spam_prob,\
+                                                                                       database_name = database_name,\
+                                                                                       message_table_name = message_table_name)\
+                     )
+            logging.info("id_and_is_spam_prob_update_sql_rdd.persist().is_cached:{0}".format(id_and_is_spam_prob_update_sql_rdd.persist().is_cached))
+            logging.info("id_and_is_spam_prob_update_sql_rdd.count():{0}".format(id_and_is_spam_prob_update_sql_rdd.count()))
+            logging.info("id_and_is_spam_prob_update_sql_rdd.take(3):{0}".format(id_and_is_spam_prob_update_sql_rdd.take(3)))
 
+            logging.info("id_and_is_spam_prob_rdd.unpersist().is_cached:{0}".format(id_and_is_spam_prob_rdd.unpersist().is_cached))
+        except Exception as e:
+            logging.error(e)
 
+        id_and_is_spam_prob_update_sql_rdd_list = id_and_is_spam_prob_update_sql_rdd.randomSplit([1,1,1,1, 1,1,1,1])
+        cursor = self.con.cursor()
+        for rdd_idx in xrange(len(id_and_is_spam_prob_update_sql_rdd_list)):
+            logging.info("id_and_is_spam_prob_update_sql_rdd_list: rdd_idx:{0}".format(rdd_idx))
 
+            is_spam_prob_sql_rdd = id_and_is_spam_prob_update_sql_rdd_list[rdd_idx]
+            is_spam_prob_sql_list = is_spam_prob_sql_rdd.collect()
+            is_spam_prob_sql_list_length = len(is_spam_prob_sql_list)
 
-    #def naive_bayes(self, mess, prob_of_normal_message_given_category_prob):
+            success_update = 0
+            failure_update = 0
+            for sql_idx in xrange(is_spam_prob_sql_list_length):
+                if (sql_idx % 10000 == 0 and sql_idx > 9998) or (sql_idx == is_spam_prob_sql_list_length-1):
+                    logging.info("==========={sql_idx}th element in is_spam_prob_sql_list of {rdd_idx}th random split rdd===========".format(sql_idx = sql_idx, rdd_idx = rdd_idx))
+                    logging.info("sql_execute_index:{idx}, finish rate:{rate}".format(idx=sql_idx, rate=float(sql_idx+1)/is_spam_prob_sql_list_length))
+                    logging.info("success_rate:{success_rate}".format(success_rate = success_update / float(success_update + failure_update)))
+                    logging.info("success_update:{success}, failure_update:{failure}".format(success = success_update, failure = failure_update))
+                sql = is_spam_prob_sql_list[sql_idx]
+                try:
+                    cursor.execute(sql)
+                    self.con.commit()
+                    success_update = success_update + 1
+                except MySQLdb.Error, e:
+                    self.con.rollback()
+                    logging.error("error SQL:{0}".format(sql))
+                    logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                    failure_update = failure_update + 1
 
 ################################### PART3 CLASS TEST ##################################
 
@@ -324,6 +388,9 @@ from pyspark import SparkContext
 pyspark_sc = SparkContext("")
 
 Model = CreateModel(database_name = database_name, pyspark_sc = pyspark_sc)
+
+id_and_word_index_list_rdd = Model.get_id_and_word_index_list_from_database(database_name = database_name,\
+                                                                            message_table_name = message_table_name)
 """
 id_and_all_num_and_true_pos_num_and_true_neg_num_tuple_rdd = Model\
     .get_id_and_all_num_and_true_pos_num_and_true_neg_num_from_database(database_name = database_name,\
