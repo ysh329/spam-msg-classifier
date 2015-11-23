@@ -318,7 +318,12 @@ class CreateModel(object):
                                                                                                       id_and_true_neg_pro_tuple_list = id_and_true_neg_pro_tuple_list,\
                                                                                                       prob_of_normal_message_given_normal_category_prob = prob_of_normal_message_given_normal_category_prob)\
                                                                           )\
-                                                                     )
+                                                                     )\
+                .map(lambda (message_id, normal_message_prob):\
+                                                               (message_id,\
+                                                                1 - normal_message_prob)\
+                     )
+
             logging.info("id_and_is_spam_prob_rdd.persist().is_cached:{0}".format(id_and_is_spam_prob_rdd.persist().is_cached))
             logging.info("id_and_is_spam_prob_rdd.count():{0}".format(id_and_is_spam_prob_rdd.count()))
             logging.info("id_and_is_spam_prob_rdd.take(3):{0}".format(id_and_is_spam_prob_rdd.take(3)))
@@ -384,6 +389,42 @@ class CreateModel(object):
                     logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
                     failure_update = failure_update + 1
 
+
+    def get_id_and_word_and_true_neg_pro_broadcast_from_database(self, database_name, word_table_name):
+        cursor = self.con.cursor()
+
+        sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
+        sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
+        #sqls.append("SELECT id, word, true_neg_pro FROM {database_name}.{table_name} WHERE id < 100".format(database_name = database_name, table_name = word_table_name))
+        sqls.append("SELECT id, word, true_neg_pro FROM {database_name}.{table_name}".format(database_name = database_name, table_name = word_table_name))
+        logging.info("len(sqls):{0}".format(len(sqls)))
+
+        for idx in xrange(len(sqls)):
+            sql = sqls[idx]
+            try:
+                cursor.execute(sql)
+                if idx == len(sqls)-1:
+                    id_and_word_and_true_neg_pro_2d_tuple = cursor.fetchall()
+                    logging.info("len(id_and_word_and_true_neg_pro_2d_tuple):{0}".format(len(id_and_word_and_true_neg_pro_2d_tuple)))
+                    logging.info("id_and_word_and_true_neg_pro_2d_tuple[:3]:{0}".format(id_and_word_and_true_neg_pro_2d_tuple[:3]))
+
+            except MySQLdb.Error, e:
+                logging.error("error SQL:{0}".format(sql))
+                logging.error("MySQL Error {error_num}: {error_info}.".format(error_num = e.args[0], error_info = e.args[1]))
+                return
+
+        # normalization
+        id_and_word_and_true_neg_pro_tuple_list = map(lambda (id, word, true_neg_pro): (int(id), word, float(true_neg_pro)), id_and_word_and_true_neg_pro_2d_tuple)
+
+        try:
+            id_and_word_and_true_neg_pro_broadcast = self.sc.broadcast(id_and_word_and_true_neg_pro_tuple_list)
+            logging.info("len(id_and_word_and_true_neg_pro_broadcast.value):{0}".format(len(id_and_word_and_true_neg_pro_broadcast.value)))
+            logging.info("id_and_word_and_true_neg_pro_broadcast.value[:3]:{0}".format(id_and_word_and_true_neg_pro_broadcast.value[:3]))
+        except Exception as e:
+            logging.error(e)
+
+        return id_and_word_and_true_neg_pro_broadcast
+
 ################################### PART3 CLASS TEST ##################################
 
 # Initialization Parameters
@@ -410,3 +451,16 @@ Model.save_true_neg_pro_to_database(id_and_true_neg_pro_tuple_rdd = id_and_true_
 """
 Model.compute_prob_of_normal_message_given_category_prob(database_name = database_name,\
                                                          message_table_name = message_table_name)
+
+
+id_and_word_and_true_neg_pro_broadcast = Model\
+    .get_id_and_word_and_true_neg_pro_broadcast_from_database(database_name = database_name,\
+                                                              word_table_name = word_table_name)
+
+id_and_is_spam_prob_rdd = Model\
+    .compute_normal_message_prob_in_train_data_rdd(id_and_word_index_list_rdd = id_and_word_index_list_rdd,\
+                                                   id_and_word_and_true_neg_pro_broadcast = id_and_word_and_true_neg_pro_broadcast)
+
+Model.save_message_is_spam_prob_to_database(id_and_is_spam_prob_rdd = id_and_is_spam_prob_rdd,\
+                                            database_name = database_name,\
+                                            message_table_name = message_table_name)
