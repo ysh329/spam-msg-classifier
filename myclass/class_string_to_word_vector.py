@@ -16,7 +16,9 @@ __author__ = 'yuens'
 import logging
 import time
 import MySQLdb
+import numpy as np
 from operator import add
+from multiprocessing import Pool
 ################################### PART2 CLASS && FUNCTION ###########################
 class String2WordVec(object):
     def __init__(self, database_name, pyspark_sc):
@@ -73,8 +75,8 @@ class String2WordVec(object):
 
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
-        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE id > 999 && id < 10000".format(database_name = database_name, table_name = message_table_name))
-        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
+        sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name} WHERE word_index_string is NULL LIMIT 1000".format(database_name = database_name, table_name = message_table_name))
+        #sqls.append("SELECT id, true_label, split_result_clean_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
         logging.info("len(sqls):{0}".format(len(sqls)))
         for idx in xrange(len(sqls)):
             sql = sqls[idx]
@@ -232,8 +234,72 @@ class String2WordVec(object):
                     logging.error("message id:{0}.lack its words in word table.".format(message_id))
                     logging.error(e)
                     index_list.append("not found")
-            return index_list
+            #return index_list
+            return (message_id, index_list)
 
+
+        id_and_index_list = []
+        id_and_word_list = id_and_word_broadcast.value
+        id_and_string_list_rdd_list = id_and_string_list_rdd.randomSplit(list(np.ones(8000)))
+
+        for rdd_idx in xrange(len(id_and_string_list_rdd_list)):
+            logging.info("id_and_string_list_rdd_list: rdd_idx:{0}".format(rdd_idx))
+
+            id_and_string_list_sub_rdd = id_and_string_list_rdd_list[rdd_idx]
+            id_and_string_list_tuple_list = id_and_string_list_sub_rdd.collect()
+            id_and_string_list_tuple_list_length = len(id_and_string_list_tuple_list)
+
+            #########################
+            #pool = Pool(4)
+            id_and_index_list.extend(map(lambda id_and_string_list_tuple:\
+                                                  string_list_to_index_list(message_id = id_and_string_list_tuple[0],\
+                                                                            string_list = id_and_string_list_tuple[1],\
+                                                                            id_and_word_list = id_and_word_list),\
+                                              id_and_string_list_tuple_list)\
+                                     )
+            logging.info("len(id_and_index_list):{0}".format(len(id_and_index_list)))
+            #pool.close()
+            #pool.join()
+            #########################
+            """
+            success_compute = 0
+            failure_compute = 0
+            for message_idx in xrange(id_and_string_list_tuple_list_length):
+                if (message_idx % 100 == 0 and message_idx > 98) or (message_idx == id_and_string_list_tuple_list_length-1):
+                    logging.info("==========={message_idx}th element in id_and_string_list_tuple_list of {rdd_idx}th random split rdd===========".format(message_idx = message_idx, rdd_idx = rdd_idx))
+                    logging.info("success_compute_index:{idx}, finish rate:{rate}".format(idx=message_idx, rate=float(message_idx+1)/id_and_string_list_tuple_list_length))
+                    logging.info("success_rate:{success_rate}".format(success_rate = success_compute / float(success_compute + failure_compute + 0.00001)))
+                    logging.info("success_compute:{success}, failure_compute:{failure}".format(success = success_compute, failure = failure_compute))
+                id_and_string_list_tuple = id_and_string_list_tuple_list[message_idx]
+                try:
+                    message_id = id_and_string_list_tuple[0]
+                    string_list = id_and_string_list_tuple[1]
+
+                    id_and_index_list.append(\
+                        string_list_to_index_list(message_id = message_id,\
+                                                  string_list = string_list,\
+                                                  id_and_word_list = id_and_word_list)\
+                        )
+                    success_compute = success_compute + 1
+                except Exception as e:
+                    logging.error(e)
+                    logging.error("error idx:{idx} of rdd idx:{rdd_idx}".format(message_idx = message_idx, rdd_idx = rdd_idx))
+                    logging.error("message_id = {message_id}, string_list = {string_list}".format(message_id = message_id, string_list = string_list))
+                    failure_compute = failure_compute + 1
+            """
+        try:
+            id_and_index_list_rdd = self.sc.parallelize(id_and_index_list)
+            logging.info("id_and_string_list_rdd.persist().is_cached:{0}".format(id_and_string_list_rdd.persist().is_cached))
+            logging.info("id_and_string_list_rdd.count():{0}".format(id_and_string_list_rdd.count()))
+            logging.info("id_and_string_list_rdd.take(3):{0}".format(id_and_string_list_rdd.take(3)))
+        except Exception as e:
+            logging.error(e)
+
+
+
+
+
+        """
         try:
             id_and_word_list = id_and_word_broadcast.value
             id_and_index_list_rdd = id_and_string_list_rdd\
@@ -248,7 +314,7 @@ class String2WordVec(object):
             logging.info("id_and_index_list_rdd.take(3):{0}".format(id_and_index_list_rdd.take(3)))
         except Exception as e:
             logging.error(e)
-
+        """
         return id_and_index_list_rdd
 
 
