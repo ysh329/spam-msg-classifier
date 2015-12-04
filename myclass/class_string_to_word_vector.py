@@ -494,7 +494,7 @@ spam_message_clean_string_dict_rdd, normal_message_clean_string_dict_rdd = Word2
 id_and_index_list_rdd = Word2Vec.\
     string_list_rdd_to_index_vector(id_and_word_broadcast = id_and_word_broadcast,\
                                     id_and_true_label_and_clean_string_list_message_rdd = id_and_true_label_and_clean_string_list_message_rdd)
-
+ 
 Word2Vec.save_index_list_to_database(database_name = database_name,\
                                      message_table_name = message_table_name,\
                                      id_and_index_list_rdd = id_and_index_list_rdd)
