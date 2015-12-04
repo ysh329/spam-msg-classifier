@@ -16,6 +16,7 @@ __author__ = 'yuens'
 import logging
 import time
 import MySQLdb
+from operator import add
 ################################### PART2 CLASS && FUNCTION ###########################
 class CreateModel(object):
     def __init__(self, database_name, pyspark_sc):
@@ -73,7 +74,7 @@ class CreateModel(object):
         sqls = ["USE {database_name}".format(database_name = database_name), "SET NAMES UTF8"]
         sqls.append("ALTER DATABASE {database_name} DEFAULT CHARACTER SET 'utf8'".format(database_name = database_name))
         #sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name}".format(database_name = database_name, table_name = message_table_name))
-        sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name} WHERE id < 100".format(database_name = database_name, table_name = message_table_name))
+        sqls.append("SELECT id, word_index_string FROM {database_name}.{table_name} WHERE word_index_string IS NOT NULL && is_spam_prob IS NULL LIMIT 300000".format(database_name = database_name, table_name = message_table_name))
         logging.info("len(sqls):{0}".format(len(sqls)))
 
         for idx in xrange(len(sqls)):
@@ -290,17 +291,29 @@ class CreateModel(object):
         # improved naive bayes
         def compute_normal_message_prob(word_index_list, id_and_true_neg_pro_tuple_list, prob_of_normal_message_given_normal_category_prob):
             normal_message_prob = prob_of_normal_message_given_normal_category_prob
-
             for idx in xrange(len(word_index_list)):
-                word_index = word_index_list[idx]
-                normal_message_prob = normal_message_prob * id_and_word_and_true_neg_pro_tuple_list[word_index-1][1]
+                # unicode number to int
+                try:
+                    word_index_in_message_string_list = int(word_index_list[idx])
+                    word_neg_pro_in_word_table = id_and_word_and_true_neg_pro_tuple_list[word_index_in_message_string_list-1][2]
+                    normal_message_prob = normal_message_prob * word_neg_pro_in_word_table
+                except Exception as e:
+                    # not found
+                    logging.error(e)
+                    continue
+                #if word_index_in_message_string_list == "not found": continue
+
 
             return normal_message_prob
 
         # word id
         try:
             id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_broadcast.value
-            id_and_word_and_true_neg_pro_tuple_list = id_and_word_and_true_neg_pro_tuple_list.sort()
+            logging.info("id_and_word_and_true_neg_pro_tuple_list[:3]:{0}".format(id_and_word_and_true_neg_pro_tuple_list[:3]))
+            id_and_word_and_true_neg_pro_tuple_list.sort()
+            logging.info("len(id_and_word_and_true_neg_pro_tuple_list):{0}".format(len(id_and_word_and_true_neg_pro_tuple_list)))
+            logging.info("id_and_word_and_true_neg_pro_tuple_list[:3]:{0}".format(id_and_word_and_true_neg_pro_tuple_list[:3]))
+
             id_and_true_neg_pro_tuple_list = map(lambda (id, word, true_neg_pro):\
                                                      (id, true_neg_pro),\
                                                  id_and_word_and_true_neg_pro_tuple_list\
@@ -390,6 +403,7 @@ class CreateModel(object):
                     failure_update = failure_update + 1
 
 
+
     def get_id_and_word_and_true_neg_pro_broadcast_from_database(self, database_name, word_table_name):
         cursor = self.con.cursor()
 
@@ -425,33 +439,53 @@ class CreateModel(object):
 
         return id_and_word_and_true_neg_pro_broadcast
 
+
+
+    def compute_is_spam_prob_threshold(self, database_name, message_table_name):
+        cursor = self.con.cursor()
+        sqls = []
+        sqls.append("""SELECT true_label, is_spam_prob FROM {database_name}.{table_name} WHERE is_train = 1""".format(database_name = database_name, table_name = message_table_name))
+        for idx in xrange(len(sqls)):
+            sql = sqls[idx]
+            try:
+                cursor.execute(sql)
+                if idx == len(sqls)-1:
+                    true_label_and_is_spam_prob_2d_tuple = cursor.fetchall()
+                    logging.info("len(true_label_and_is_spam_prob_2d_tuple):{0}".format(len(true_label_and_is_spam_prob_2d_tuple)))
+                    logging.info("type(true_label_and_is_spam_prob_2d_tuple):{0}".format(type(true_label_and_is_spam_prob_2d_tuple)))
+                    logging.info("true_label_and_is_spam_prob_2d_tuple[0]:{0}".format(true_label_and_is_spam_prob_2d_tuple[0]))
+
+                    true_label_and_is_spam_prob_tuple_rdd = self.sc.parallelize(true_label_and_is_spam_prob_2d_tuple)\
+                        .map(lambda (true_label, is_spam_prob): ( (is_spam_prob, int(true_label)), 1) )\
+                        .reduceByKey(add)\
+                        .sortByKey(False)
+
+                    logging.info("true_label_and_is_spam_prob_tuple_rdd.count():{0}".format(true_label_and_is_spam_prob_tuple_rdd.count()))
+                    logging.info("true_label_and_is_spam_prob_tuple_rdd.take(3):{0}".format(true_label_and_is_spam_prob_tuple_rdd.take(3)))
+
+            except Exception as e:
+                logging.error(e)
+
 ################################### PART3 CLASS TEST ##################################
 
 # Initialization Parameters
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
+
+
 from pyspark import SparkContext
 pyspark_sc = SparkContext("")
 
+
 Model = CreateModel(database_name = database_name, pyspark_sc = pyspark_sc)
 
+"""
 id_and_word_index_list_rdd = Model.get_id_and_word_index_list_from_database(database_name = database_name,\
                                                                             message_table_name = message_table_name)
-"""
-id_and_all_num_and_true_pos_num_and_true_neg_num_tuple_rdd = Model\
-    .get_id_and_all_num_and_true_pos_num_and_true_neg_num_from_database(database_name = database_name,\
-                                                                        word_table_name = word_table_name)
-id_and_true_neg_pro_tuple_rdd = Model\
-    .compute_true_neg_pro_rdd(id_and_all_num_and_true_pos_num_and_true_neg_num_tuple_rdd = id_and_all_num_and_true_pos_num_and_true_neg_num_tuple_rdd)
-
-Model.save_true_neg_pro_to_database(id_and_true_neg_pro_tuple_rdd = id_and_true_neg_pro_tuple_rdd,\
-                                    database_name = database_name,\
-                                    word_table_name = word_table_name)
-"""
-Model.compute_prob_of_normal_message_given_category_prob(database_name = database_name,\
+prob_of_normal_message_given_normal_category_prob = Model\
+    .compute_prob_of_normal_message_given_category_prob(database_name = database_name,\
                                                          message_table_name = message_table_name)
-
 
 id_and_word_and_true_neg_pro_broadcast = Model\
     .get_id_and_word_and_true_neg_pro_broadcast_from_database(database_name = database_name,\
@@ -459,8 +493,13 @@ id_and_word_and_true_neg_pro_broadcast = Model\
 
 id_and_is_spam_prob_rdd = Model\
     .compute_normal_message_prob_in_train_data_rdd(id_and_word_index_list_rdd = id_and_word_index_list_rdd,\
-                                                   id_and_word_and_true_neg_pro_broadcast = id_and_word_and_true_neg_pro_broadcast)
+                                                   id_and_word_and_true_neg_pro_broadcast = id_and_word_and_true_neg_pro_broadcast,\
+                                                   prob_of_normal_message_given_normal_category_prob = prob_of_normal_message_given_normal_category_prob)
+
 
 Model.save_message_is_spam_prob_to_database(id_and_is_spam_prob_rdd = id_and_is_spam_prob_rdd,\
                                             database_name = database_name,\
                                             message_table_name = message_table_name)
+"""
+
+Model.compute_threshold(database_name = database_name, message_table_name = message_table_name)
