@@ -17,7 +17,6 @@ import logging
 import MySQLdb
 import time
 import jieba
-from pyspark import SparkContext, SparkConf, StorageLevel
 ################################### PART2 CLASS && FUNCTION ###########################
 class ReadText2DB(object):
 
@@ -27,7 +26,7 @@ class ReadText2DB(object):
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './2.log',
+                  filename = './main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -279,7 +278,7 @@ message_table_name = "message_table"
 Reader = ReadText2DB(database_name = database_name,
                      train_data_dir = train_data_dir,
                      stopword_data_dir = stopword_data_dir,
-                     pyspark_app_name = pyspark_app_name)
+                     pyspark_sc = pyspark_sc)
 
 #id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list, split_result_2d_list = Reader.read_text_into_meta_data()
 #Reader.save_meta_data_to_database(database_name, table_name_list[0], id_list, is_train_list, true_label_list, word_num_list, content_list, split_result_string_list, split_result_num_list)

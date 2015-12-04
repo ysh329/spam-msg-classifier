@@ -394,7 +394,7 @@ class UniqueWordSaver(object):
                 logging.error("error sql{0}".format(sql))
         return sql
 ################################### PART3 CLASS TEST ##################################
-"""
+
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
@@ -402,9 +402,14 @@ stopword_data_dir = "../data/input/stopword.txt"
 pyspark_app_name = "spam-msg-classifier"
 
 
+from pyspark import SparkContext
+pyspark_sc = SparkContext("")
+
+
+
 WordRecord = UniqueWordSaver(database_name = database_name,
                              stopword_data_dir = stopword_data_dir,
-                             pyspark_app_name = pyspark_app_name)
+                             pyspark_sc = pyspark_sc)
 
 WordRecord.save_stopword_to_database(database_name = database_name,
                                      word_table_name = word_table_name)
@@ -421,4 +426,3 @@ word_count_len_is_stopword_rdd = WordRecord.compute_len_is_stopword_rdd(word_cou
 WordRecord.save_word_count_with_len_rdd_to_database(database_name = database_name,
                                                     word_table_name = word_table_name,
                                                     word_count_len_is_stopword_rdd = word_count_len_is_stopword_rdd)
-"""
