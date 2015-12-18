@@ -394,7 +394,7 @@ class UniqueWordSaver(object):
                 logging.error("error sql{0}".format(sql))
         return sql
 ################################### PART3 CLASS TEST ##################################
-
+'''
 database_name = "messageDB"
 message_table_name = "message_table"
 word_table_name = "word_table"
@@ -426,3 +426,4 @@ word_count_len_is_stopword_rdd = WordRecord.compute_len_is_stopword_rdd(word_cou
 WordRecord.save_word_count_with_len_rdd_to_database(database_name = database_name,
                                                     word_table_name = word_table_name,
                                                     word_count_len_is_stopword_rdd = word_count_len_is_stopword_rdd)
+'''

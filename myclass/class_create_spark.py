@@ -24,7 +24,7 @@ class CreateSpark(object):
         logging.basicConfig(level = logging.INFO,
                   format = '%(asctime)s  %(levelname)5s %(filename)19s[line:%(lineno)3d] %(funcName)s %(message)s',
                   datefmt = '%y-%m-%d %H:%M:%S',
-                  filename = './2.log',
+                  filename = './main.log',
                   filemode = 'a')
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
@@ -63,11 +63,11 @@ class CreateSpark(object):
         self.end = time.clock()
         logging.info("The class {class_name} run time is : {delta_time} seconds".format(class_name = CreateSpark.__name__, delta_time = self.end))
 ################################### PART3 CLASS TEST ##################################
-"""
+'''
 # initialization parameter
 pyspark_app_name = "spam-msg-classifier"
 
 SparkCreator = CreateSpark(pyspark_app_name = pyspark_app_name)
 pyspark_sc = SparkCreator.return_spark_context()
 logging.info("sc.version:{0}".format(pyspark_sc.version))
-"""
+'''
