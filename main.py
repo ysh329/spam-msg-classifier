@@ -44,7 +44,7 @@ def main():
                          message_table_name = message_table_name,\
                          word_table_name = word_table_name)
 
- 
+
     """
     # class_read_text_to_database
     pyspark_app_name = "save-word-to-database"
